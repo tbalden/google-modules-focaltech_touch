@@ -43,7 +43,7 @@
 #elif defined(CONFIG_DRM)
 #if defined(CONFIG_DRM_PANEL)
 #include <drm/drm_panel.h>
-#else
+#elif defined(CONFIG_ARCH_MSM)
 #include <linux/msm_drm_notify.h>
 #endif
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
@@ -74,8 +74,10 @@ struct fts_ts_data *fts_data;
 /*****************************************************************************
 * Static function prototypes
 *****************************************************************************/
+#ifdef FTS_DRM_BRIDGE
 static int fts_ts_suspend(struct device *dev);
 static int fts_ts_resume(struct device *dev);
+#endif
 
 int fts_check_cid(struct fts_ts_data *ts_data, u8 id_h)
 {
@@ -1248,6 +1250,7 @@ static int fts_power_source_exit(struct fts_ts_data *ts_data)
     return 0;
 }
 
+#ifdef FTS_DRM_BRIDGE
 static int fts_power_source_suspend(struct fts_ts_data *ts_data)
 {
     int ret = 0;
@@ -1279,6 +1282,7 @@ static int fts_power_source_resume(struct fts_ts_data *ts_data)
 
     return ret;
 }
+#endif
 #endif /* FTS_POWER_SOURCE_CUST_EN */
 
 static int fts_gpio_configure(struct fts_ts_data *data)
@@ -1451,10 +1455,11 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
 
 static void fts_resume_work(struct work_struct *work)
 {
+#ifdef FTS_DRM_BRIDGE
     struct fts_ts_data *ts_data = container_of(work, struct fts_ts_data,
                                   resume_work);
-
     fts_ts_resume(ts_data->dev);
+#endif
 }
 
 #if defined(CONFIG_FB)
@@ -1577,7 +1582,7 @@ static int drm_notifier_callback(struct notifier_block *self,
 
     return 0;
 }
-#else
+#elif defined(CONFIG_ARCH_MSM)
 static int drm_notifier_callback(struct notifier_block *self,
                                  unsigned long event, void *data)
 {
@@ -1797,14 +1802,15 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         FTS_ERROR("[FB]Unable to register fb_notifier: %d", ret);
     }
 #elif defined(CONFIG_DRM)
-    ts_data->fb_notif.notifier_call = drm_notifier_callback;
 #if defined(CONFIG_DRM_PANEL)
+    ts_data->fb_notif.notifier_call = drm_notifier_callback;
     if (active_panel) {
         ret = drm_panel_notifier_register(active_panel, &ts_data->fb_notif);
         if (ret)
             FTS_ERROR("[DRM]drm_panel_notifier_register fail: %d\n", ret);
     }
-#else
+#elif defined(CONFIG_ARCH_MSM)
+    ts_data->fb_notif.notifier_call = drm_notifier_callback;
     ret = msm_drm_register_client(&ts_data->fb_notif);
     if (ret) {
         FTS_ERROR("[DRM]Unable to register fb_notifier: %d\n", ret);
@@ -1890,7 +1896,7 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 #if defined(CONFIG_DRM_PANEL)
     if (active_panel)
         drm_panel_notifier_unregister(active_panel, &ts_data->fb_notif);
-#else
+#elif defined(CONFIG_ARCH_MSM)
     if (msm_drm_unregister_client(&ts_data->fb_notif))
         FTS_ERROR("[DRM]Error occurred while unregistering fb_notifier.\n");
 #endif
@@ -1919,6 +1925,7 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
     return 0;
 }
 
+#ifdef FTS_DRM_BRIDGE
 static int fts_ts_suspend(struct device *dev)
 {
     int ret = 0;
@@ -2001,6 +2008,7 @@ static int fts_ts_resume(struct device *dev)
     FTS_FUNC_EXIT();
     return 0;
 }
+#endif
 
 #if defined(CONFIG_PM) && FTS_PATCH_COMERR_PM
 static int fts_pm_suspend(struct device *dev)

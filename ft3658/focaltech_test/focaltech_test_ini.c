@@ -268,8 +268,10 @@ static int fts_test_read_ini_data(char *config_name, char *config_buf)
     struct inode *inode = NULL;
     off_t fsize = 0;
     char filepath[FILE_NAME_LENGTH] = { 0 };
+#ifdef FTS_VFS_EN
     loff_t pos = 0;
     mm_segment_t old_fs;
+#endif
 
     FTS_TEST_FUNC_ENTER();
 
@@ -291,13 +293,16 @@ static int fts_test_read_ini_data(char *config_name, char *config_buf)
     inode = pfile->f_dentry->d_inode;
 #endif
     fsize = inode->i_size;
+#ifdef FTS_VFS_EN
     old_fs = get_fs();
     set_fs(KERNEL_DS);
     pos = 0;
     vfs_read(pfile, config_buf, fsize, &pos);
     filp_close(pfile, NULL);
     set_fs(old_fs);
-
+#else
+    return -EINVAL;
+#endif
     FTS_TEST_FUNC_EXIT();
     return 0;
 }

@@ -1,19 +1,22 @@
 # Makefile for the focaltech touchscreen drivers.
 
+KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
+M ?= $(shell pwd)
 
-obj-$(CONFIG_TOUCHSCREEN_FTS)	+=  focaltech_core.o
-obj-$(CONFIG_TOUCHSCREEN_FTS)	+=  focaltech_ex_fun.o
-obj-$(CONFIG_TOUCHSCREEN_FTS)	+=  focaltech_ex_mode.o
-obj-$(CONFIG_TOUCHSCREEN_FTS)	+=  focaltech_gesture.o
-obj-$(CONFIG_TOUCHSCREEN_FTS)	+=  focaltech_esdcheck.o
-obj-$(CONFIG_TOUCHSCREEN_FTS)   +=  focaltech_point_report_check.o
-obj-$(CONFIG_TOUCHSCREEN_FTS)   +=  focaltech_test/
+KBUILD_OPTIONS	+= CONFIG_TOUCHSCREEN_FTS=m
+EXTRA_CFLAGS	+= -DDYNAMIC_DEBUG_MODULE
+#EXTRA_CFLAGS	+= -DCONFIG_TOUCHSCREEN_TBN
+#EXTRA_CFLAGS	+= -DCONFIG_TOUCHSCREEN_HEATMAP
+#EXTRA_CFLAGS	+= -DCONFIG_TOUCHSCREEN_OFFLOAD
+EXTRA_CFLAGS	+= -I$(KERNEL_SRC)/../google-modules/display
+EXTRA_CFLAGS	+= -I$(KERNEL_SRC)/../google-modules/touch/common
+EXTRA_CFLAGS	+= -I$(KERNEL_SRC)/../google-modules/touch/common/include
+EXTRA_SYMBOLS	+= $(OUT_DIR)/../google-modules/touch/common/Module.symvers
 
+modules modules_install clean:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) \
+	$(KBUILD_OPTIONS) \
+	EXTRA_CFLAGS="$(EXTRA_CFLAGS)" \
+	KBUILD_EXTRA_SYMBOLS="$(EXTRA_SYMBOLS)" \
+	$(@)
 
-obj-$(CONFIG_TOUCHSCREEN_FTS)	+=  focaltech_flash.o
-obj-$(CONFIG_TOUCHSCREEN_FTS)   +=  focaltech_flash/
-
-
-
-
-obj-$(CONFIG_TOUCHSCREEN_FTS)   +=  focaltech_spi.o

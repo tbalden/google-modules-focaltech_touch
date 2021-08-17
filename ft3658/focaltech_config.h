@@ -30,6 +30,21 @@
 #ifndef _LINUX_FOCLATECH_CONFIG_H_
 #define _LINUX_FOCLATECH_CONFIG_H_
 
+/*
+ * TODO:
+ * 1. b/196923176: WHI panel bridge porting for suspend/resume.
+ *
+ */
+#ifdef CONFIG_SOC_GOOGLE
+#undef FTS_DRM_BRIDGE
+#undef FTS_VFS_EN
+#undef CONFIG_FB
+#undef CONFIG_DRM_PANEL
+#undef CONFIG_HAS_EARLYSUSPEND
+#undef CONFIG_ARCH_QCOM
+#undef CONFIG_ARCH_MSM
+#endif
+
 /**************************************************/
 /****** G: A, I: B, S: C, U: D  ******************/
 /****** chip type defines, do not modify *********/
