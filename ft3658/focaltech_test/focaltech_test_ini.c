@@ -230,9 +230,10 @@ static int fts_atoi(char *nptr)
 
 static int fts_test_get_ini_size(char *config_name)
 {
+    off_t fsize = 0;
+#ifdef FTS_VFS_EN
     struct file *pfile = NULL;
     struct inode *inode = NULL;
-    off_t fsize = 0;
     char filepath[FILE_NAME_LENGTH] = { 0 };
 
     FTS_TEST_FUNC_ENTER();
@@ -258,7 +259,7 @@ static int fts_test_get_ini_size(char *config_name)
     filp_close(pfile, NULL);
 
     FTS_TEST_FUNC_ENTER();
-
+#endif
     return fsize;
 }
 

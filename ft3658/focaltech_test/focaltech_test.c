@@ -1177,12 +1177,12 @@ void show_data_mc_sc(int *data)
 #if CSV_SUPPORT || TXT_SUPPORT
 static int fts_test_save_test_data(char *file_name, char *data_buf, int len)
 {
+#ifdef FTS_VFS_EN
     struct file *pfile = NULL;
     char filepath[FILE_NAME_LENGTH] = { 0 };
-#ifdef FTS_VFS_EN
+
     loff_t pos;
     mm_segment_t old_fs;
-#endif
 
     FTS_TEST_FUNC_ENTER();
     memset(filepath, 0, sizeof(filepath));
@@ -1196,18 +1196,15 @@ static int fts_test_save_test_data(char *file_name, char *data_buf, int len)
         return -EIO;
     }
 
-#ifdef FTS_VFS_EN
     old_fs = get_fs();
     set_fs(KERNEL_DS);
     pos = 0;
     vfs_write(pfile, data_buf, len, &pos);
     filp_close(pfile, NULL);
     set_fs(old_fs);
-#else
-    return -EINVAL;
-#endif
 
     FTS_TEST_FUNC_EXIT();
+#endif
     return 0;
 }
 
