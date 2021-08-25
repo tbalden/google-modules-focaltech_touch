@@ -130,6 +130,7 @@ struct fts_ts_platform_data {
     u32 irq_gpio_flags;
     u32 reset_gpio;
     u32 reset_gpio_flags;
+    struct pinctrl *pinctrl;
     bool have_key;
     u32 key_number;
     u32 keys[FTS_MAX_KEYS];
@@ -211,8 +212,8 @@ struct fts_ts_data {
     int key_state;
     int touch_point;
     int point_num;
-    struct regulator *vdd;
-    struct regulator *vcc_i2c;
+    struct regulator *avdd; //3.3V
+    struct regulator *dvdd; //1.8V
 #if FTS_PINCTRL_EN
     struct pinctrl *pinctrl;
     struct pinctrl_state *pins_active;

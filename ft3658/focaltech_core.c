@@ -60,10 +60,10 @@
 #define INTERVAL_READ_REG                   200  /* unit:ms */
 #define TIMEOUT_READ_REG                    1000 /* unit:ms */
 #if FTS_POWER_SOURCE_CUST_EN
-#define FTS_VTG_MIN_UV                      2800000
-#define FTS_VTG_MAX_UV                      3300000
-#define FTS_I2C_VTG_MIN_UV                  1800000
-#define FTS_I2C_VTG_MAX_UV                  1800000
+#define FTS_AVDD_VTG_MIN_UV                 3300000
+#define FTS_AVDD_VTG_MAX_UV                 3300000
+#define FTS_DVDD_VTG_MIN_UV                 1800000
+#define FTS_DVDD_VTG_MAX_UV                 1800000
 #endif
 
 /*****************************************************************************
@@ -1120,8 +1120,8 @@ static int fts_power_source_ctrl(struct fts_ts_data *ts_data, int enable)
 {
     int ret = 0;
 
-    if (IS_ERR_OR_NULL(ts_data->vdd)) {
-        FTS_ERROR("vdd is invalid");
+    if (IS_ERR_OR_NULL(ts_data->avdd)) {
+        FTS_ERROR("avdd is invalid");
         return -EINVAL;
     }
 
@@ -1131,15 +1131,15 @@ static int fts_power_source_ctrl(struct fts_ts_data *ts_data, int enable)
             FTS_DEBUG("regulator enable !");
             gpio_direction_output(ts_data->pdata->reset_gpio, 0);
             msleep(1);
-            ret = regulator_enable(ts_data->vdd);
+            ret = regulator_enable(ts_data->avdd);
             if (ret) {
-                FTS_ERROR("enable vdd regulator failed,ret=%d", ret);
+                FTS_ERROR("enable avdd regulator failed,ret=%d", ret);
             }
 
-            if (!IS_ERR_OR_NULL(ts_data->vcc_i2c)) {
-                ret = regulator_enable(ts_data->vcc_i2c);
+            if (!IS_ERR_OR_NULL(ts_data->dvdd)) {
+                ret = regulator_enable(ts_data->dvdd);
                 if (ret) {
-                    FTS_ERROR("enable vcc_i2c regulator failed,ret=%d", ret);
+                    FTS_ERROR("enable dvdd regulator failed,ret=%d", ret);
                 }
             }
             ts_data->power_disabled = false;
@@ -1149,14 +1149,14 @@ static int fts_power_source_ctrl(struct fts_ts_data *ts_data, int enable)
             FTS_DEBUG("regulator disable !");
             gpio_direction_output(ts_data->pdata->reset_gpio, 0);
             msleep(1);
-            ret = regulator_disable(ts_data->vdd);
+            ret = regulator_disable(ts_data->avdd);
             if (ret) {
-                FTS_ERROR("disable vdd regulator failed,ret=%d", ret);
+                FTS_ERROR("disable avdd regulator failed,ret=%d", ret);
             }
-            if (!IS_ERR_OR_NULL(ts_data->vcc_i2c)) {
-                ret = regulator_disable(ts_data->vcc_i2c);
+            if (!IS_ERR_OR_NULL(ts_data->dvdd)) {
+                ret = regulator_disable(ts_data->dvdd);
                 if (ret) {
-                    FTS_ERROR("disable vcc_i2c regulator failed,ret=%d", ret);
+                    FTS_ERROR("disable dvdd regulator failed,ret=%d", ret);
                 }
             }
             ts_data->power_disabled = true;
@@ -1167,10 +1167,33 @@ static int fts_power_source_ctrl(struct fts_ts_data *ts_data, int enable)
     return ret;
 }
 
+
+int fts_pinctrl_configure(struct fts_ts_data *ts, bool enable)
+{
+	struct pinctrl_state *state;
+
+	FTS_INFO("%s: %s\n", __func__, enable ? "ACTIVE" : "SUSPEND");
+
+	if (enable) {
+		state = pinctrl_lookup_state(ts->pdata->pinctrl, "ts_active");
+		if (IS_ERR(ts->pdata->pinctrl))
+			FTS_ERROR("%s: could not get active pinstate\n", __func__);
+	} else {
+		state = pinctrl_lookup_state(ts->pdata->pinctrl, "ts_suspend");
+		if (IS_ERR(ts->pdata->pinctrl))
+			FTS_ERROR("%s: could not get suspend pinstate\n", __func__);
+	}
+
+	if (!IS_ERR_OR_NULL(state))
+		return pinctrl_select_state(ts->pdata->pinctrl, state);
+
+	return 0;
+}
+
 /*****************************************************************************
 * Name: fts_power_source_init
-* Brief: Init regulator power:vdd/vcc_io(if have), generally, no vcc_io
-*        vdd---->vdd-supply in dts, kernel will auto add "-supply" to parse
+* Brief: Init regulator power:avdd/dvdd(if have), generally, no dvdd
+*        avdd---->avdd-supply in dts, kernel will auto add "-supply" to parse
 *        Must be call after fts_gpio_configure() execute,because this function
 *        will operate reset-gpio which request gpio in fts_gpio_configure()
 * Input:
@@ -1182,35 +1205,53 @@ static int fts_power_source_init(struct fts_ts_data *ts_data)
     int ret = 0;
 
     FTS_FUNC_ENTER();
-    ts_data->vdd = regulator_get(ts_data->dev, "vdd");
-    if (IS_ERR_OR_NULL(ts_data->vdd)) {
-        ret = PTR_ERR(ts_data->vdd);
-        FTS_ERROR("get vdd regulator failed,ret=%d", ret);
-        return ret;
+    if (of_property_read_bool(ts_data->dev->of_node, "avdd-supply")) {
+        ts_data->avdd = regulator_get(ts_data->dev, "avdd");
+        if (IS_ERR_OR_NULL(ts_data->avdd)) {
+            ret = PTR_ERR(ts_data->avdd);
+            ts_data->avdd = NULL;
+            FTS_ERROR("get avdd regulator failed,ret=%d", ret);
+            return ret;
+        }
+    } else {
+        FTS_ERROR("avdd-supply not found!");
     }
 
-    if (regulator_count_voltages(ts_data->vdd) > 0) {
-        ret = regulator_set_voltage(ts_data->vdd, FTS_VTG_MIN_UV,
-                                    FTS_VTG_MAX_UV);
+    if (regulator_count_voltages(ts_data->avdd) > 0) {
+        ret = regulator_set_voltage(ts_data->avdd, FTS_AVDD_VTG_MIN_UV,
+                                    FTS_AVDD_VTG_MAX_UV);
         if (ret) {
-            FTS_ERROR("vdd regulator set_vtg failed ret=%d", ret);
-            regulator_put(ts_data->vdd);
+            FTS_ERROR("avdd regulator set_vtg failed ret=%d", ret);
+            regulator_put(ts_data->avdd);
             return ret;
         }
     }
 
-    ts_data->vcc_i2c = regulator_get(ts_data->dev, "vcc_i2c");
-    if (!IS_ERR_OR_NULL(ts_data->vcc_i2c)) {
-        if (regulator_count_voltages(ts_data->vcc_i2c) > 0) {
-            ret = regulator_set_voltage(ts_data->vcc_i2c,
-                                        FTS_I2C_VTG_MIN_UV,
-                                        FTS_I2C_VTG_MAX_UV);
-            if (ret) {
-                FTS_ERROR("vcc_i2c regulator set_vtg failed,ret=%d", ret);
-                regulator_put(ts_data->vcc_i2c);
-            }
+    if (of_property_read_bool(ts_data->dev->of_node, "vdd-supply")) {
+        ts_data->dvdd = regulator_get(ts_data->dev, "vdd");
+
+        if (IS_ERR_OR_NULL(ts_data->dvdd)) {
+            ret = PTR_ERR(ts_data->dvdd);
+            ts_data->dvdd = NULL;
+            FTS_ERROR("get dvdd regulator failed,ret=%d", ret);
+            return ret;
+        }
+    } else {
+        FTS_ERROR("vdd-supply not found!");
+    }
+
+    if (regulator_count_voltages(ts_data->dvdd) > 0) {
+        ret = regulator_set_voltage(ts_data->dvdd,
+                                    FTS_DVDD_VTG_MIN_UV,
+                                    FTS_DVDD_VTG_MAX_UV);
+        if (ret) {
+            FTS_ERROR("dvdd regulator set_vtg failed,ret=%d", ret);
+            regulator_put(ts_data->dvdd);
         }
     }
+
+    ts_data->pdata->pinctrl = devm_pinctrl_get(&ts_data->spi->dev);
+    fts_pinctrl_configure(ts_data, true);
 
 #if FTS_PINCTRL_EN
     fts_pinctrl_init(ts_data);
@@ -1229,22 +1270,23 @@ static int fts_power_source_init(struct fts_ts_data *ts_data)
 
 static int fts_power_source_exit(struct fts_ts_data *ts_data)
 {
+    fts_pinctrl_configure(ts_data, false);
 #if FTS_PINCTRL_EN
     fts_pinctrl_select_release(ts_data);
 #endif
 
     fts_power_source_ctrl(ts_data, DISABLE);
 
-    if (!IS_ERR_OR_NULL(ts_data->vdd)) {
-        if (regulator_count_voltages(ts_data->vdd) > 0)
-            regulator_set_voltage(ts_data->vdd, 0, FTS_VTG_MAX_UV);
-        regulator_put(ts_data->vdd);
+    if (!IS_ERR_OR_NULL(ts_data->avdd)) {
+        if (regulator_count_voltages(ts_data->avdd) > 0)
+            regulator_set_voltage(ts_data->avdd, 0, FTS_AVDD_VTG_MAX_UV);
+        regulator_put(ts_data->avdd);
     }
 
-    if (!IS_ERR_OR_NULL(ts_data->vcc_i2c)) {
-        if (regulator_count_voltages(ts_data->vcc_i2c) > 0)
-            regulator_set_voltage(ts_data->vcc_i2c, 0, FTS_I2C_VTG_MAX_UV);
-        regulator_put(ts_data->vcc_i2c);
+    if (!IS_ERR_OR_NULL(ts_data->dvdd)) {
+        if (regulator_count_voltages(ts_data->dvdd) > 0)
+            regulator_set_voltage(ts_data->dvdd, 0, FTS_DVDD_VTG_MAX_UV);
+        regulator_put(ts_data->dvdd);
     }
 
     return 0;
@@ -1254,7 +1296,7 @@ static int fts_power_source_exit(struct fts_ts_data *ts_data)
 static int fts_power_source_suspend(struct fts_ts_data *ts_data)
 {
     int ret = 0;
-
+    fts_pinctrl_configure(ts_data, false);
 #if FTS_PINCTRL_EN
     fts_pinctrl_select_suspend(ts_data);
 #endif
@@ -1270,7 +1312,7 @@ static int fts_power_source_suspend(struct fts_ts_data *ts_data)
 static int fts_power_source_resume(struct fts_ts_data *ts_data)
 {
     int ret = 0;
-
+    fts_pinctrl_configure(ts_data, true);
 #if FTS_PINCTRL_EN
     fts_pinctrl_select_normal(ts_data);
 #endif
@@ -1862,7 +1904,7 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 #if FTS_POINT_REPORT_CHECK_EN
     fts_point_report_check_exit(ts_data);
 #endif
-
+    fts_pinctrl_configure(ts_data, false);
     fts_release_apk_debug_channel(ts_data);
     fts_remove_sysfs(ts_data);
     fts_ex_mode_exit(ts_data);
@@ -2090,7 +2132,7 @@ static const struct spi_device_id fts_ts_id[] = {
     {},
 };
 static const struct of_device_id fts_dt_match[] = {
-    {.compatible = "focaltech,fts", },
+    {.compatible = "focaltech,ts", },
     {},
 };
 MODULE_DEVICE_TABLE(of, fts_dt_match);
