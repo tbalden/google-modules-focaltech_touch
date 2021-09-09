@@ -38,9 +38,8 @@
 /*****************************************************************************
 * Private constant and macro definitions using #define
 *****************************************************************************/
-#define FTS_FW_REQUEST_SUPPORT                      0
-/* Example: focaltech_ts_fw_tianma.bin */
-#define FTS_FW_NAME_PREX_WITH_REQUEST               "focaltech_ts_fw_"
+#define FTS_FW_REQUEST_SUPPORT                      1
+#define FTS_FW_NAME                                 "focaltech_ts_fw"
 
 /*****************************************************************************
 * Global variable or extern global variabls/functions
@@ -1887,9 +1886,7 @@ static int fts_get_fw_file_via_request_firmware(struct fts_upgrade *upg)
         return -EINVAL;
     }
 
-    snprintf(fwname, FILE_NAME_LENGTH, "%s%s.bin", \
-             FTS_FW_NAME_PREX_WITH_REQUEST, \
-             upg->module_info->vendor_name);
+    snprintf(fwname, FILE_NAME_LENGTH, "%s.bin", FTS_FW_NAME);
 
     ret = request_firmware(&fw, fwname, upg->ts_data->dev);
     if (0 == ret) {
