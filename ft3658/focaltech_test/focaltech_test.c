@@ -2221,7 +2221,7 @@ static int fts_test_func_init(struct fts_ts_data *ts_data)
 }
 
 /*run_os_test*/
-#define RUN_OS_TEST_INI_FILE        "Conf_MultipleTest.ini"
+#define RUN_OS_TEST_INI_FILE        "focaltech_testconf.ini"
 static int proc_run_os_test_show(struct seq_file *s, void *v)
 {
     int ret = 0;
