@@ -59,12 +59,6 @@
 #define FTS_DRIVER_PEN_NAME                 "fts_ts,pen"
 #define INTERVAL_READ_REG                   200  /* unit:ms */
 #define TIMEOUT_READ_REG                    1000 /* unit:ms */
-#if FTS_POWER_SOURCE_CUST_EN
-#define FTS_AVDD_VTG_MIN_UV                 3300000
-#define FTS_AVDD_VTG_MAX_UV                 3300000
-#define FTS_DVDD_VTG_MIN_UV                 1800000
-#define FTS_DVDD_VTG_MAX_UV                 1800000
-#endif
 
 /*****************************************************************************
 * Global variable or extern global variabls/functions
@@ -1217,16 +1211,6 @@ static int fts_power_source_init(struct fts_ts_data *ts_data)
         FTS_ERROR("avdd-supply not found!");
     }
 
-    if (regulator_count_voltages(ts_data->avdd) > 0) {
-        ret = regulator_set_voltage(ts_data->avdd, FTS_AVDD_VTG_MIN_UV,
-                                    FTS_AVDD_VTG_MAX_UV);
-        if (ret) {
-            FTS_ERROR("avdd regulator set_vtg failed ret=%d", ret);
-            regulator_put(ts_data->avdd);
-            return ret;
-        }
-    }
-
     if (of_property_read_bool(ts_data->dev->of_node, "vdd-supply")) {
         ts_data->dvdd = regulator_get(ts_data->dev, "vdd");
 
@@ -1238,16 +1222,6 @@ static int fts_power_source_init(struct fts_ts_data *ts_data)
         }
     } else {
         FTS_ERROR("vdd-supply not found!");
-    }
-
-    if (regulator_count_voltages(ts_data->dvdd) > 0) {
-        ret = regulator_set_voltage(ts_data->dvdd,
-                                    FTS_DVDD_VTG_MIN_UV,
-                                    FTS_DVDD_VTG_MAX_UV);
-        if (ret) {
-            FTS_ERROR("dvdd regulator set_vtg failed,ret=%d", ret);
-            regulator_put(ts_data->dvdd);
-        }
     }
 
     ts_data->pdata->pinctrl = devm_pinctrl_get(&ts_data->spi->dev);
@@ -1278,15 +1252,13 @@ static int fts_power_source_exit(struct fts_ts_data *ts_data)
     fts_power_source_ctrl(ts_data, DISABLE);
 
     if (!IS_ERR_OR_NULL(ts_data->avdd)) {
-        if (regulator_count_voltages(ts_data->avdd) > 0)
-            regulator_set_voltage(ts_data->avdd, 0, FTS_AVDD_VTG_MAX_UV);
         regulator_put(ts_data->avdd);
+        ts_data->avdd = NULL;
     }
 
     if (!IS_ERR_OR_NULL(ts_data->dvdd)) {
-        if (regulator_count_voltages(ts_data->dvdd) > 0)
-            regulator_set_voltage(ts_data->dvdd, 0, FTS_DVDD_VTG_MAX_UV);
         regulator_put(ts_data->dvdd);
+        ts_data->dvdd = NULL;
     }
 
     return 0;
