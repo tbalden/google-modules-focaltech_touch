@@ -212,8 +212,9 @@ struct fts_ts_data {
     int key_state;
     int touch_point;
     int point_num;
-    struct regulator *avdd; //3.3V
-    struct regulator *dvdd; //1.8V
+    struct proc_dir_entry *proc_touch_entry;
+    struct regulator *avdd;
+    struct regulator *dvdd;
 #if FTS_PINCTRL_EN
     struct pinctrl *pinctrl;
     struct pinctrl_state *pins_active;

@@ -338,7 +338,7 @@ static const struct proc_ops fts_proc_fops = {
     .proc_write  = fts_debug_write,
 };
 #else
-#static const struct file_operations fts_proc_fops = {
+static const struct file_operations fts_proc_fops = {
     .owner  = THIS_MODULE,
     .read   = fts_debug_read,
     .write  = fts_debug_write,

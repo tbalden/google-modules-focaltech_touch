@@ -453,22 +453,34 @@ int wait_state_update(u8 retval)
 {
     int ret = 0;
     int times = 0;
+    u8 addr = 0;
     u8 state = 0xFF;
+    struct fts_test *tdata = fts_ftest;
+
+    if ((NULL == tdata) || (NULL == tdata->func)) {
+        FTS_TEST_SAVE_ERR("test/func is null\n");
+        return -EINVAL;
+    }
+
+    if (IC_HW_INCELL == tdata->func->hwtype) {
+        addr = FACTORY_REG_PARAM_UPDATE_STATE;
+    } else {
+        addr = FACTORY_REG_PARAM_UPDATE_STATE_TOUCH;
+    }
 
     while (times++ < FACTORY_TEST_RETRY) {
         sys_delay(FACTORY_TEST_DELAY);
         /* Wait register status update */
         state = 0xFF;
-        ret = fts_test_read_reg(FACTORY_REG_PARAM_UPDATE_STATE, &state);
+        ret = fts_test_read_reg(addr, &state);
         if ((ret >= 0) && (retval == state))
             break;
         else
-            FTS_TEST_DBG("reg%x=%x,retry:%d", \
-                         FACTORY_REG_PARAM_UPDATE_STATE, state, times);
+            FTS_TEST_DBG("reg%x=%x,retry:%d", addr, state, times);
     }
 
     if (times >= FACTORY_TEST_RETRY) {
-        FTS_TEST_SAVE_ERR("Wait State Update fail\n");
+        FTS_TEST_SAVE_ERR("Wait State Update fail,reg%x=%x\n", addr, state);
         return -EIO;
     }
 
@@ -2143,8 +2155,8 @@ static ssize_t fts_test_store(
 }
 
 /*  test from test.ini
-*    example:echo "***.ini" > fts_test
-*/
+ *  example:echo "***.ini" > fts_test
+ */
 static DEVICE_ATTR(fts_test, S_IRUGO | S_IWUSR, fts_test_show, fts_test_store);
 
 static struct attribute *fts_test_attributes[] = {
@@ -2192,8 +2204,219 @@ static int fts_test_func_init(struct fts_ts_data *ts_data)
         return -ENODATA;
     }
 
-    fts_ftest->ts_data = fts_data;
+    fts_ftest->ts_data = ts_data;
     return 0;
+}
+
+extern int fts_test_get_raw(int *raw, u8 tx, u8 rx);
+extern int fts_test_get_short(int *short_data, u8 tx, u8 rx);
+
+/* Rawdata test */
+static int proc_test_raw_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    int i = 0;
+    int node_num = 0;
+    u8 tx = 0;
+    u8 rx = 0;
+    int *raw;
+
+    ret = enter_factory_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter factory mode fails");
+        return ret;
+    }
+    /* get Tx chanel number */
+    ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
+    if (ret < 0) {
+        FTS_ERROR("read tx fails");
+        enter_work_mode();
+        return ret;
+    }
+    /* get Rx chanel number */
+    ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
+    if (ret < 0) {
+        FTS_ERROR("read rx fails");
+        enter_work_mode();
+        return ret;
+    }
+
+    node_num = tx * rx;
+    raw = fts_malloc(node_num * sizeof(int));
+    if (!raw) {
+        FTS_ERROR("malloc memory for raw fails");
+        enter_work_mode();
+        return  -ENOMEM;
+    }
+
+    /* get raw data */
+    fts_test_get_raw(raw, tx, rx);
+
+    /* output raw data */
+    seq_printf(s, "     ");
+    for (i = 0; i < rx; i++)
+        seq_printf(s, " RX%02d ", (i + 1));
+
+    for (i = 0; i < node_num; i++) {
+        if ((i % rx) == 0)
+            seq_printf(s, "\nTX%02d:%5d,", (i / rx  + 1), raw[i]);
+        else
+            seq_printf(s, "%5d,", raw[i]);
+    }
+
+    seq_printf(s, "\n\n");
+
+    fts_free(raw);
+
+    ret = enter_work_mode();
+
+    return ret;
+}
+
+static int proc_test_raw_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_raw_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_raw_fops = {
+    .proc_open   = proc_test_raw_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release  = single_release,
+};
+#else
+static const struct file_operations proc_test_raw_fops = {
+    .owner  = THIS_MODULE,
+    .open   = proc_test_raw_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+/* Short test */
+static int proc_test_short_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    int i = 0;
+    int node_num = 0;
+    u8 tx = 0;
+    u8 rx = 0;
+    int *short_data;
+
+    ret = enter_factory_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter factory mode fails");
+        return ret;
+    }
+    /* get Tx chanel number */
+    ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
+    if (ret < 0) {
+        FTS_ERROR("read tx fails");
+        enter_work_mode();
+        return ret;
+    }
+    /* get Rx chanel number */
+    ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
+    if (ret < 0) {
+        FTS_ERROR("read rx fails");
+        enter_work_mode();
+        return ret;
+    }
+
+    node_num = tx + rx;
+    short_data = fts_malloc(node_num * sizeof(int));
+    if (!short_data) {
+        FTS_ERROR("malloc memory for raw fails");
+        enter_work_mode();
+        return -ENOMEM;
+    }
+
+    /* get raw data */
+    fts_test_get_short(short_data, tx, rx);
+
+    /* output short data */
+    seq_printf(s, "TX:");
+    for (i = 0; i < tx; i++) {
+        seq_printf(s, "%d,", short_data[i]);
+    }
+    seq_printf(s, "\n");
+
+    seq_printf(s, "RX:");
+    for (i = tx; i < node_num; i++) {
+        seq_printf(s, "%d,", short_data[i]);
+    }
+    seq_printf(s, "\n\n");
+
+    fts_free(short_data);
+
+    ret = enter_work_mode();
+
+    return ret;
+}
+
+static int proc_test_short_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_short_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_short_fops = {
+    .proc_open   = proc_test_short_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release = single_release,
+};
+#else
+static const struct file_operations proc_test_short_fops = {
+    .open   = proc_test_short_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+#define FTS_PROC_TEST_DIR       "selftest"
+
+struct proc_dir_entry *fts_proc_test_dir;
+struct proc_dir_entry *proc_test_raw;
+struct proc_dir_entry *proc_test_short;
+
+#define MODE_OWNER_READ   0400
+static int fts_create_test_procs(struct fts_ts_data *ts_data)
+{
+    int ret = 0;
+
+    proc_test_raw = proc_create_data("Rawdata", MODE_OWNER_READ,
+        fts_proc_test_dir, &proc_test_raw_fops, ts_data);
+    if (!proc_test_raw) {
+        FTS_ERROR("create proc_test_raw entry fail");
+        return -ENOMEM;
+    }
+
+    proc_test_short = proc_create_data("Short", MODE_OWNER_READ,
+        fts_proc_test_dir, &proc_test_short_fops, ts_data);
+    if (!proc_test_short) {
+        FTS_ERROR("create proc_test_short entry fail");
+        return -ENOMEM;
+    }
+
+    FTS_INFO("create test procs succeeds");
+    return ret;
+}
+
+static void fts_free_test_procs(void)
+{
+    FTS_TEST_FUNC_ENTER();
+
+    if (proc_test_raw)
+        proc_remove(proc_test_raw);
+
+    if (proc_test_short)
+        proc_remove(proc_test_short);
+
+    FTS_TEST_FUNC_EXIT();
 }
 
 int fts_test_init(struct fts_ts_data *ts_data)
@@ -2215,6 +2438,19 @@ int fts_test_init(struct fts_ts_data *ts_data)
     } else {
         FTS_TEST_DBG("sysfs(test) create successfully");
     }
+
+    fts_proc_test_dir = proc_mkdir(FTS_PROC_TEST_DIR,
+        ts_data->proc_touch_entry);
+    if (!fts_proc_test_dir) {
+        FTS_ERROR("create %s fails", FTS_PROC_TEST_DIR);
+        return -ENOMEM;
+    }
+
+    ret = fts_create_test_procs(ts_data);
+    if (ret) {
+        FTS_TEST_ERROR("create test procs fail");
+    }
+
     FTS_TEST_FUNC_EXIT();
 
     return ret;
@@ -2224,6 +2460,7 @@ int fts_test_exit(struct fts_ts_data *ts_data)
 {
     FTS_TEST_FUNC_ENTER();
 
+    fts_free_test_procs();
     sysfs_remove_group(&ts_data->dev->kobj, &fts_test_attribute_group);
     fts_free(fts_ftest);
     FTS_TEST_FUNC_EXIT();

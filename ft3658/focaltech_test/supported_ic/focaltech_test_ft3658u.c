@@ -1400,3 +1400,293 @@ struct test_funcs test_func_ft5652 = {
     .cb_high_support = true,
     .start_test = start_test_ft5652,
 };
+
+static int get_short_adc(int *adc_buf, int byte_num, u8 mode)
+{
+    int ret = 0;
+    int i = 0;
+    u8 short_state = 0;
+
+    FTS_TEST_FUNC_ENTER();
+    /* select short test mode & start test */
+    ret = fts_test_write_reg(FACTROY_REG_SHORT2_TEST_EN, mode);
+    if (ret < 0) {
+        FTS_TEST_ERROR("write short test mode fail\n");
+        return ret;
+    }
+
+    for (i = 0; i < FACTORY_TEST_RETRY; i++) {
+        sys_delay(FACTORY_TEST_RETRY_DELAY);
+
+        ret = fts_test_read_reg(FACTROY_REG_SHORT2_TEST_STATE, &short_state);
+        if ((ret >= 0) && (TEST_RETVAL_AA == short_state))
+            break;
+        else
+            FTS_TEST_DBG("reg%x=%x,retry:%d", FACTROY_REG_SHORT2_TEST_STATE,
+                short_state, i);
+    }
+    if (i >= FACTORY_TEST_RETRY) {
+        FTS_TEST_ERROR("short test timeout, ADC data not OK\n");
+        ret = -EIO;
+        return ret;
+    }
+
+    ret = read_mass_data(FACTORY_REG_SHORT2_ADDR_MC, byte_num, adc_buf);
+    if (ret < 0) {
+        FTS_TEST_ERROR("get short(adc) data fail\n");
+    }
+
+    FTS_TEST_FUNC_EXIT();
+    return ret;
+}
+
+static int fts_test_get_raw_restore_reg(u8 fre, u8 data_sel, u8 data_type) {
+    int ret = 0;
+    u8 state = 0;
+    bool param_update_support = false;
+
+    FTS_TEST_FUNC_ENTER();
+
+    fts_test_read_reg(FACTORY_REG_PARAM_UPDATE_STATE_TOUCH, &state);
+    param_update_support = (0xAA == state);
+
+    /* set the origin value */
+    ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, fre);
+    if (ret < 0) {
+        FTS_TEST_ERROR("restore FACTORY_REG_FRE_LIST fail,ret=%d\n", ret);
+    }
+
+    if (param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
+    }
+
+    ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, data_type);
+    if (ret < 0) {
+        FTS_TEST_ERROR("set FACTORY_REG_DATA_TYPE type fail,ret=%d\n", ret);
+    }
+
+    if (param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
+    }
+
+    ret = fts_test_write_reg(FACTORY_REG_DATA_SELECT, data_sel);
+    if (ret < 0) {
+        FTS_TEST_ERROR("restore FACTORY_REG_DATA_SELECT fail,ret=%d\n", ret);
+    }
+
+    if (param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
+    }
+    FTS_TEST_FUNC_EXIT();
+    return ret;
+}
+
+int fts_test_get_raw(int *raw, u8 tx, u8 rx)
+{
+    int ret = 0;
+    int i = 0;
+    int times = 0;
+    int node_num = tx * rx;
+    u8 fre = 0;
+    u8 data_sel = 0;
+    u8 data_type = 0;
+    u8 val = 0;
+    u8 state = 0;
+    bool param_update_support = false;
+
+    FTS_INFO("============ Test Item: rawdata test start");
+
+    fts_test_read_reg(FACTORY_REG_PARAM_UPDATE_STATE_TOUCH, &state);
+    param_update_support = (0xAA == state);
+    FTS_TEST_INFO("Param update:%d", param_update_support);
+
+    /* save origin value */
+    ret = fts_test_read_reg(FACTORY_REG_FRE_LIST, &fre);
+    if (ret) {
+        FTS_TEST_ERROR("read FACTORY_REG_FRE_LIST fail,ret=%d\n", ret);
+        return ret;
+    }
+
+    ret = fts_test_read_reg(FACTORY_REG_DATA_TYPE, &data_type);
+    if (ret) {
+        FTS_ERROR("read FACTORY_REG_DATA_TYPE fail,ret=%d\n", ret);
+        return ret;
+    }
+
+    ret = fts_test_read_reg(FACTORY_REG_DATA_SELECT, &data_sel);
+    if (ret) {
+        FTS_TEST_ERROR("read FACTORY_REG_DATA_SELECT error,ret=%d\n", ret);
+        return ret;
+    }
+
+    /* set frequecy high */
+    ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, 0x81);
+    if (ret < 0) {
+        FTS_TEST_ERROR("set frequecy fail,ret=%d\n", ret);
+        fts_test_get_raw_restore_reg(fre, data_sel, data_type);
+        return ret;
+    }
+
+    if (param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            fts_test_get_raw_restore_reg(fre, data_sel, data_type);
+            return ret;
+        }
+    }
+
+    ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, 0x01);
+    if (ret < 0) {
+        FTS_TEST_ERROR("set raw type fail,ret=%d\n", ret);
+        fts_test_get_raw_restore_reg(fre, data_sel, data_type);
+        return ret;
+    }
+
+    /* select rawdata */
+    ret = fts_test_write_reg(FACTORY_REG_DATA_SELECT, 0x00);
+    if (ret < 0) {
+        FTS_TEST_ERROR("set fir fail,ret=%d\n", ret);
+        fts_test_get_raw_restore_reg(fre, data_sel, data_type);
+        return ret;
+    }
+
+    if (param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            fts_test_get_raw_restore_reg(fre, data_sel, data_type);
+            return ret;
+        }
+    }
+
+    /*********************GET RAWDATA*********************/
+    for (i = 0; i < 3; i++) {
+        FTS_TEST_INFO("get rawdata,i=%d", i);
+        ret = fts_test_write_reg(DEVIDE_MODE_ADDR, 0xC0);
+        if (ret < 0) {
+            FTS_TEST_ERROR("write start scan mode fail\n");
+            continue;
+        }
+
+        while (times++ < FACTORY_TEST_RETRY) {
+            sys_delay(FACTORY_TEST_DELAY);
+
+            ret = fts_test_read_reg(DEVIDE_MODE_ADDR, &val);
+            if ((ret >= 0) && (val == 0x40)) {
+                break;
+            } else
+                FTS_TEST_DBG("reg%x=%x,retry:%d", DEVIDE_MODE_ADDR, val,
+                    times);
+        }
+
+        if (times >= FACTORY_TEST_RETRY) {
+            FTS_TEST_ERROR("scan timeout\n");
+            continue;
+        }
+
+        ret = fts_test_write_reg(FACTORY_REG_LINE_ADDR, 0xAA);
+        if (ret < 0) {
+            FTS_TEST_ERROR("wirte line/start addr fail\n");
+            continue;
+        }
+
+        ret = read_mass_data(FACTORY_REG_RAWDATA_ADDR_MC_SC, (node_num * 2),
+              raw);
+    }
+    if (ret < 0) {
+        FTS_TEST_ERROR("get rawdata fail,ret=%d\n", ret);
+        fts_test_get_raw_restore_reg(fre, data_sel, data_type);
+        return ret;
+    }
+
+    fts_test_get_raw_restore_reg(fre, data_sel, data_type);
+    FTS_TEST_INFO("============ Test Item: rawdata test end\n");
+    return ret;
+}
+
+static int fts_test_get_short_restore_reg(u8 res_level) {
+    int ret = 0;
+
+    FTS_TEST_FUNC_ENTER();
+    ret = fts_test_write_reg(FACTROY_REG_SHORT2_RES_LEVEL, res_level);
+    if (ret < 0) {
+        FTS_TEST_ERROR("restore FACTROY_REG_SHORT2_RES_LEVEL level fails");
+    }
+
+    FTS_TEST_FUNC_EXIT();
+    return ret;
+}
+
+int fts_test_get_short(int *short_data, u8 tx, u8 rx)
+{
+    int ret = 0;
+    int i = 0;
+    int ch_num = (tx + rx);
+    int offset = 0;
+    int code = 0;
+    int denominator = 0;
+    int numerator = 0;
+    u8 res_level = 0;
+
+    FTS_TEST_INFO("============ Test Item: Short Test start\n");
+
+    ret = fts_test_read_reg(FACTROY_REG_SHORT2_RES_LEVEL, &res_level);
+    if (ret < 0) {
+        FTS_TEST_ERROR("read short level fails\n");
+        return ret;
+    }
+
+    /* get offset = readdata - 1024 */
+    ret = get_short_adc(&offset, 1 * 2, FACTROY_REG_SHORT2_OFFSET);
+    if (ret < 0) {
+        FTS_TEST_ERROR("get weak short data fail,ret:%d\n", ret);
+        fts_test_get_short_restore_reg(res_level);
+        return ret;
+    }
+    offset -= 1024;
+    FTS_TEST_INFO("short offset:%d", offset);
+
+    /* get short resistance and exceptional channel */
+    /* choose resistor_level */
+    ret = fts_test_write_reg(FACTROY_REG_SHORT2_RES_LEVEL, 1);
+    if (ret < 0) {
+        FTS_TEST_ERROR("write short resistor level fail\n");
+        fts_test_get_short_restore_reg(res_level);
+        return ret;
+    }
+
+    /* get adc data */
+    ret = get_short_adc(short_data, ch_num * 2, FACTROY_REG_SHORT2_CA);
+    if (ret < 0) {
+        FTS_TEST_ERROR("get weak short data fail,ret:%d\n", ret);
+        fts_test_get_short_restore_reg(res_level);
+        return ret;
+    }
+
+    for (i = 0; i < ch_num; i++) {
+        code = short_data[i];
+        denominator = 1407 - code + offset;
+        if (denominator == 0) {
+            short_data[i] = 2000;
+        } else {
+            numerator = (code - offset + 395) * 112;
+            short_data[i] = fts_abs(numerator / denominator - 3);
+        }
+    }
+
+    ret = fts_test_get_short_restore_reg(res_level);
+
+    FTS_TEST_INFO("============ Test Item: Short Test end\n");
+    return ret;
+}
+

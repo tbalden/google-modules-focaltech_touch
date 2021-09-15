@@ -91,6 +91,7 @@ Test Status
 #define FACTORY_REG_RAWBUF_SELECT               0x09
 #define FACTORY_REG_KEY_CBWIDTH                 0x0B
 #define FACTORY_REG_PARAM_UPDATE_STATE          0x0E
+#define FACTORY_REG_PARAM_UPDATE_STATE_TOUCH    0xB5
 #define FACTORY_REG_SHORT_TEST_EN               0x0F
 #define FACTORY_REG_SHORT_TEST_STATE            0x10
 #define FACTORY_REG_LCD_NOISE_START             0x11
@@ -474,6 +475,7 @@ struct test_funcs {
     bool mc_sc_short_v2;
     bool raw_u16;
     bool cb_high_support;
+    bool param_update_support;
     int (*param_init)(void);
     int (*init)(void);
     int (*start_test)(void);
@@ -604,8 +606,8 @@ void fts_test_save_data(char *name, int code, int *data, int datacnt,
     }\
 } while(0)
 
-#define CSV_SUPPORT             1
-#define TXT_SUPPORT             1
+#define CSV_SUPPORT             0
+#define TXT_SUPPORT             0
 
 #define FTS_TEST_DBG(fmt, args...) do { \
 printk("[FTS_TS][TEST]%s:"fmt"\n",  __func__, ##args); \
@@ -620,7 +622,7 @@ printk("[FTS_TS][TEST]%s:"fmt"\n",  __func__, ##args); \
 } while (0)
 
 #define FTS_TEST_INFO(fmt, args...) do { \
-    printk(KERN_ERR "[FTS_TS/I][TEST]%s:"fmt"\n", __func__, ##args); \
+    printk("[FTS_TS/I][TEST]%s:"fmt"\n", __func__, ##args); \
 } while (0)
 
 #define FTS_TEST_ERROR(fmt, args...) do { \
@@ -634,6 +636,7 @@ printk("[FTS_TS][TEST]%s:"fmt"\n",  __func__, ##args); \
         TXT_BUFFER_LEN, \
         fmt, ##args);\
     } \
+    printk("[FTS_TS/I][TEST]%s:"fmt"\n", __func__, ##args);\
 } while (0)
 
 #define FTS_TEST_SAVE_ERR(fmt, args...)  do { \

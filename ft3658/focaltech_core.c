@@ -1748,6 +1748,11 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         goto err_irq_req;
     }
 
+    ts_data->proc_touch_entry = proc_mkdir("focaltech_touch", NULL);
+    if (!ts_data->proc_touch_entry) {
+        FTS_ERROR("create proc/focaltech_touch fails");
+    }
+
     ret = fts_create_apk_debug_channel(ts_data);
     if (ret) {
         FTS_ERROR("create apk debug node fail");
@@ -1815,16 +1820,15 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     if (ret) {
         FTS_ERROR("[FB]Unable to register fb_notifier: %d", ret);
     }
-#elif defined(CONFIG_DRM)
-#if defined(CONFIG_DRM_PANEL)
+#elif defined(CONFIG_DRM_PANEL) || defined(CONFIG_ARCH_MSM)
     ts_data->fb_notif.notifier_call = drm_notifier_callback;
+#if defined(CONFIG_DRM_PANEL)
     if (active_panel) {
         ret = drm_panel_notifier_register(active_panel, &ts_data->fb_notif);
         if (ret)
             FTS_ERROR("[DRM]drm_panel_notifier_register fail: %d\n", ret);
     }
 #elif defined(CONFIG_ARCH_MSM)
-    ts_data->fb_notif.notifier_call = drm_notifier_callback;
     ret = msm_drm_register_client(&ts_data->fb_notif);
     if (ret) {
         FTS_ERROR("[DRM]Unable to register fb_notifier: %d\n", ret);
