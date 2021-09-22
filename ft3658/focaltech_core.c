@@ -838,6 +838,7 @@ static void fts_irq_read_report(void)
 #endif
 }
 
+extern int int_test_has_interrupt;
 static irqreturn_t fts_irq_handler(int irq, void *data)
 {
 #if defined(CONFIG_PM) && FTS_PATCH_COMERR_PM
@@ -854,7 +855,7 @@ static irqreturn_t fts_irq_handler(int irq, void *data)
         }
     }
 #endif
-
+    int_test_has_interrupt++;
     fts_irq_read_report();
     return IRQ_HANDLED;
 }
@@ -2063,7 +2064,7 @@ static int fts_ts_probe(struct spi_device *spi)
     int ret = 0;
     struct fts_ts_data *ts_data = NULL;
 
-    FTS_INFO("Touch Screen(SPI BUS) driver prboe...");
+    FTS_INFO("Touch Screen(SPI BUS) driver proboe...");
     spi->mode = SPI_MODE_0;
     spi->bits_per_word = 8;
     ret = spi_setup(spi);
@@ -2094,7 +2095,7 @@ static int fts_ts_probe(struct spi_device *spi)
         return ret;
     }
 
-    FTS_INFO("Touch Screen(SPI BUS) driver prboe successfully");
+    FTS_INFO("Touch Screen(SPI BUS) driver probe successfully");
     return 0;
 }
 

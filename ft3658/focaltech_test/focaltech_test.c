@@ -2208,6 +2208,216 @@ static int fts_test_func_init(struct fts_ts_data *ts_data)
     return 0;
 }
 
+/*FW Version test*/
+static int proc_test_fwver_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    u8 fwver = 0;
+
+    ret = fts_read_reg(REG_FW_VERSION, &fwver);
+    if (ret < 0) {
+        FTS_ERROR("FWVER read fail,ret=%d\n", ret);
+        return ret;
+    }
+
+    seq_printf(s, "FWVER:0x%02X\n", fwver);
+    return 0;
+}
+
+static int proc_test_fwver_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_fwver_show, inode->i_private);
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_fwver_fops = {
+    .proc_open   = proc_test_fwver_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release  = single_release,
+};
+#else
+static const struct file_operations proc_test_fwver_fops = {
+    .owner  = THIS_MODULE,
+    .open   = proc_test_fwver_open,
+    .read  = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+/*Channel Num test*/
+static int proc_test_chnum_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    u8 tx = 0;
+    u8 rx = 0;
+
+    ret = enter_factory_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter factory mode fails");
+        return ret;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
+    if (ret < 0) {
+        FTS_ERROR("read tx fails");
+        return ret;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
+    if (ret < 0) {
+        FTS_ERROR("read rx fails");
+        return ret;
+    }
+
+    ret = enter_work_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter work mode fails");
+    }
+
+    seq_printf(s, "TX:%02d, RX:%02d\n", tx, rx);
+    return 0;
+}
+
+static int proc_test_chnum_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_chnum_show, inode->i_private);
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_chnum_fops = {
+    .proc_open   = proc_test_chnum_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release  = single_release,
+};
+#else
+static const struct file_operations proc_test_chnum_fops = {
+    .owner  = THIS_MODULE,
+    .open   = proc_test_chnum_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+/*Reset_Pin Test*/
+static int proc_test_reset_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    u8 reg88_val = 0xFF;
+    u8 tmp_val = 0;
+
+    ret = fts_read_reg(FACTORY_REG_WORK_MODE, &reg88_val);
+    if (ret < 0) {
+        FTS_ERROR("read FACTORY_REG_WORK_MODE register fails");
+        return ret;
+    }
+
+    tmp_val = reg88_val - 1;
+    ret = fts_write_reg(FACTORY_REG_WORK_MODE, tmp_val);
+    if (ret < 0) {
+        FTS_ERROR("write FACTORY_REG_WORK_MODE register fails");
+        return ret;
+    }
+
+    fts_reset_proc(200);
+
+    ret = fts_read_reg(FACTORY_REG_WORK_MODE, &tmp_val);
+    if (ret < 0) {
+        FTS_ERROR("read FACTORY_REG_WORK_MODE register back fails");
+        return ret;
+    }
+
+    if (tmp_val == reg88_val)
+        seq_printf(s, "Reset Pin test PASS.\n");
+    else
+        seq_printf(s, "Reset Pin test FAIL.\n");
+
+    return ret;
+}
+
+static int proc_test_reset_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_reset_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_reset_fops = {
+    .proc_open   = proc_test_reset_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release = single_release,
+};
+#else
+static const struct file_operations proc_test_reset_fops = {
+    .open   = proc_test_reset_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+/* INT_Pin Test */
+int int_test_has_interrupt = 0;
+static int proc_test_int_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+
+    ret = enter_factory_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter factory mode fails");
+        return ret;
+    }
+
+    fts_irq_enable();
+    sys_delay(10);
+    int_test_has_interrupt = 0;
+    ret = fts_write_reg(FACTORY_REG_SCAN_ADDR2, 0x01);
+    if (ret < 0) {
+        FTS_ERROR("read tx fails");
+        enter_work_mode();
+        return ret;
+    }
+
+    sys_delay(1000);
+
+    if (int_test_has_interrupt)
+        seq_printf(s, "INT Pin test PASS.\n");
+    else
+        seq_printf(s, "INT Pin test FAIL.\n");
+
+    ret = enter_work_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter work mode fails");
+    }
+
+    return ret;
+}
+
+static int proc_test_int_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_int_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_int_fops = {
+    .proc_open   = proc_test_int_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release = single_release,
+};
+#else
+static const struct file_operations proc_test_int_fops = {
+    .open   = proc_test_int_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+
 extern int fts_test_get_raw(int *raw, u8 tx, u8 rx);
 extern int fts_test_get_short(int *short_data, u8 tx, u8 rx);
 
@@ -2380,6 +2590,10 @@ static const struct file_operations proc_test_short_fops = {
 #define FTS_PROC_TEST_DIR       "selftest"
 
 struct proc_dir_entry *fts_proc_test_dir;
+struct proc_dir_entry *proc_test_fwver;
+struct proc_dir_entry *proc_test_chnum;
+struct proc_dir_entry *proc_test_reset_pin;
+struct proc_dir_entry *proc_test_int_pin;
 struct proc_dir_entry *proc_test_raw;
 struct proc_dir_entry *proc_test_short;
 
@@ -2387,6 +2601,34 @@ struct proc_dir_entry *proc_test_short;
 static int fts_create_test_procs(struct fts_ts_data *ts_data)
 {
     int ret = 0;
+
+    proc_test_fwver = proc_create("FW_Version", MODE_OWNER_READ,
+        ts_data->proc_touch_entry, &proc_test_fwver_fops);
+    if (!proc_test_fwver) {
+        FTS_ERROR("create proc_test_fwver entry fail");
+        return -ENOMEM;
+    }
+
+    proc_test_chnum = proc_create("Channel_Num", MODE_OWNER_READ,
+        ts_data->proc_touch_entry, &proc_test_chnum_fops);
+    if (!proc_test_chnum) {
+        FTS_ERROR("create proc_test_chnum entry fail");
+        return -ENOMEM;
+    }
+
+    proc_test_reset_pin = proc_create("Reset_Pin", MODE_OWNER_READ,
+        ts_data->proc_touch_entry, &proc_test_reset_fops);
+    if (!proc_test_reset_pin) {
+        FTS_ERROR("create proc_test_reset_pin entry fail");
+        return -ENOMEM;
+    }
+
+    proc_test_int_pin = proc_create("INT_PIN", MODE_OWNER_READ,
+        ts_data->proc_touch_entry, &proc_test_int_fops);
+    if (!proc_test_int_pin) {
+        FTS_ERROR("create proc_test_int_pin entry fail");
+        return -ENOMEM;
+    }
 
     proc_test_raw = proc_create_data("Rawdata", MODE_OWNER_READ,
         fts_proc_test_dir, &proc_test_raw_fops, ts_data);
@@ -2409,6 +2651,18 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
 static void fts_free_test_procs(void)
 {
     FTS_TEST_FUNC_ENTER();
+
+    if (proc_test_fwver)
+        proc_remove(proc_test_fwver);
+
+    if (proc_test_chnum)
+        proc_remove(proc_test_chnum);
+
+    if (proc_test_reset_pin)
+        proc_remove(proc_test_reset_pin);
+
+    if (proc_test_int_pin)
+        proc_remove(proc_test_int_pin);
 
     if (proc_test_raw)
         proc_remove(proc_test_raw);
