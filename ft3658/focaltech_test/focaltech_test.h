@@ -185,6 +185,13 @@ Test Status
 #define FTS_MAX_SORT_SC                         32768
 #define FTS_MIN_SORT_SC                         0
 
+/* noise */
+#define FACTORY_REG_MAXDIFF_EN                  0x1A
+#define FACTORY_REG_MAXDIFF_FLAG                0x1B
+#define FACTORY_REG_FRAME_NUM_H                 0x1C
+#define FACTORY_REG_FRAME_NUM_L                 0x1D
+#define FACTORY_REG_NOISE_ADDR                  0xCE
+
 /*****************************************************************************
 * enumerations, structures and unions
 *****************************************************************************/

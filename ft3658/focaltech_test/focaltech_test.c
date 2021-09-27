@@ -2205,7 +2205,8 @@ static int fts_test_func_init(struct fts_ts_data *ts_data)
             if (0 == func->ctype[j])
                 break;
             else if (func->ctype[j] == ic_stype) {
-                FTS_TEST_INFO("match test function,type:%x", (int)func->ctype[j]);
+                FTS_TEST_INFO("match test function,type:%x",
+                    (int)func->ctype[j]);
                 fts_ftest->func = func;
             }
         }
@@ -2508,7 +2509,12 @@ static const struct file_operations proc_test_int_fops = {
 
 
 extern int fts_test_get_raw(int *raw, u8 tx, u8 rx);
+extern int fts_test_get_uniformity_data(int *rawdata_linearity, u8 tx, u8 rx);
+extern int fts_test_get_scap_raw(int *scap_raw, u8 tx, u8 rx, int *fwcheck);
+extern int fts_test_get_scap_cb(int *scap_cb, u8 tx, u8 rx, int *fwcheck);
 extern int fts_test_get_short(int *short_data, u8 tx, u8 rx);
+extern int fts_test_get_noise(int *noise, u8 tx, u8 rx);
+extern int fts_test_get_panel_differ(int *panel_differ, u8 tx, u8 rx);
 
 /* Rawdata test */
 static int proc_test_raw_show(struct seq_file *s, void *v)
@@ -2588,6 +2594,426 @@ static const struct proc_ops proc_test_raw_fops = {
 static const struct file_operations proc_test_raw_fops = {
     .owner  = THIS_MODULE,
     .open   = proc_test_raw_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+/* Rawdata_Uniformity test */
+static int proc_test_uniformity_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    int i = 0;
+    int node_num = 0;
+    u8 tx = 0;
+    u8 rx = 0;
+    int *uniformity;
+
+    ret = enter_factory_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter factory mode fails");
+        return ret;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
+    if (ret < 0) {
+        FTS_ERROR("read tx fails");
+        goto exit;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
+    if (ret < 0) {
+        FTS_ERROR("read rx fails");
+        goto exit;
+    }
+
+    node_num = tx * rx;
+    uniformity = fts_malloc(node_num * 2 * sizeof(int));
+    if (!uniformity) {
+        FTS_ERROR("malloc memory for raw fails");
+        ret = -ENOMEM;
+        goto exit;
+    }
+
+    /* get raw data */
+    fts_test_get_uniformity_data(uniformity, tx, rx);
+
+    /* output raw data */
+    seq_printf(s, "Rawdata Uniformity TX:\n");
+    for (i = 0; i < node_num; i++) {
+        if ((i + 1) % rx)
+            seq_printf(s, "%d,", uniformity[i]);
+        else
+            seq_printf(s, "%d,\n", uniformity[i]);
+    }
+
+    seq_printf(s, "Rawdata Uniformity RX:\n");
+    for (i = 0; i < node_num; i++) {
+        if ((i + 1) % rx)
+            seq_printf(s, "%d,", uniformity[node_num + i]);
+        else
+            seq_printf(s, "%d,\n", uniformity[node_num + i]);
+    }
+
+    fts_free(uniformity);
+
+exit:
+
+    ret = enter_work_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter work mode fails");
+    }
+
+    return 0;
+}
+
+static int proc_test_uniformity_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_uniformity_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_uniformity_fops = {
+    .proc_open   = proc_test_uniformity_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release  = single_release,
+};
+#else
+static const struct file_operations proc_test_uniformity_fops = {
+    .owner  = THIS_MODULE,
+    .open   = proc_test_uniformity_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+/* Scap Rawdata test */
+static int proc_test_sraw_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    int i = 0;
+    int node_num = 0;
+    int *sraw = NULL;
+    int fwcheck = 0;
+    u8 tx = 0;
+    u8 rx = 0;
+
+    ret = enter_factory_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter factory mode fails");
+        return ret;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
+    if (ret < 0) {
+        FTS_ERROR("read tx fails");
+        goto exit;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
+    if (ret < 0) {
+        FTS_ERROR("read rx fails");
+        goto exit;
+    }
+
+    node_num = tx + rx;
+    sraw = fts_malloc(node_num * 3 * sizeof(int));
+    if (!sraw) {
+        FTS_ERROR("malloc memory for sraw fails");
+        ret = -ENOMEM;
+        goto exit;
+    }
+
+    /* get raw data */
+    fts_test_get_scap_raw(sraw, tx, rx, &fwcheck);
+    seq_printf(s, "Scap raw checked:%X\n", fwcheck);
+
+    /* output raw data */
+    if ((fwcheck & 0x01) || (fwcheck & 0x02)) {
+        seq_printf(s, "Scap raw(proof on):\n");
+        seq_printf(s, "RX:");
+        for (i = 0; i < rx; i++) {
+            seq_printf(s, "%d,", sraw[i]);
+        }
+        seq_printf(s, "\n");
+
+        seq_printf(s, "TX:");
+        for (i = rx; i < node_num; i++) {
+            seq_printf(s, "%d,", sraw[i]);
+        }
+        seq_printf(s, "\n");
+    }
+
+    if ((fwcheck & 0x04) || (fwcheck & 0x08)) {
+        seq_printf(s, "Scap raw(proof off):\n");
+        seq_printf(s, "RX:");
+        for (i = node_num; i < node_num + rx; i++) {
+            seq_printf(s, "%d,", sraw[i]);
+        }
+        seq_printf(s, "\n");
+
+        seq_printf(s, "TX:");
+        for (i = node_num + rx; i < node_num * 2; i++) {
+            seq_printf(s, "%d,", sraw[i]);
+        }
+        seq_printf(s, "\n");
+    }
+
+    if ((fwcheck & 0x10) || (fwcheck & 0x20)) {
+        seq_printf(s, "Scap raw(high):\n");
+        seq_printf(s, "RX:");
+        for (i = node_num * 2; i < node_num * 2 + rx; i++) {
+            seq_printf(s, "%d,", sraw[i]);
+        }
+        seq_printf(s, "\n");
+
+        seq_printf(s, "TX:");
+        for (i = node_num * 2 + rx; i < node_num * 3; i++) {
+            seq_printf(s, "%d,", sraw[i]);
+        }
+        seq_printf(s, "\n");
+    }
+
+    fts_free(sraw);
+
+exit:
+
+    ret = enter_work_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter work mode fails");
+    }
+
+    return 0;
+}
+
+static int proc_test_sraw_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_sraw_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_sraw_fops = {
+    .proc_open   = proc_test_sraw_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release  = single_release,
+};
+#else
+static const struct file_operations proc_test_sraw_fops = {
+    .owner  = THIS_MODULE,
+    .open   = proc_test_sraw_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+/* Scap CB test */
+static int proc_test_scb_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    int i = 0;
+    int node_num = 0;
+    int *scb = NULL;
+    int fwcheck = 0;
+    u8 tx = 0;
+    u8 rx = 0;
+
+    ret = enter_factory_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter factory mode fails");
+        return ret;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
+    if (ret < 0) {
+        FTS_ERROR("read tx fails");
+        goto exit;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
+    if (ret < 0) {
+        FTS_ERROR("read rx fails");
+        goto exit;
+    }
+
+    node_num = tx + rx;
+    scb = fts_malloc(node_num * 3 * sizeof(int));
+    if (!scb) {
+        FTS_ERROR("malloc memory for scb fails");
+        ret = -ENOMEM;
+        goto exit;
+    }
+
+    /* get raw data */
+    fts_test_get_scap_cb(scb, tx, rx, &fwcheck);
+    seq_printf(s, "Scap cb checked:%X\n", fwcheck);
+
+    /* output raw data */
+    if ((fwcheck & 0x01) || (fwcheck & 0x02)) {
+        seq_printf(s, "Scap raw(proof on):\n");
+        seq_printf(s, "RX:");
+        for (i = 0; i < rx; i++) {
+            seq_printf(s, "%d,", scb[i]);
+        }
+        seq_printf(s, "\n");
+
+        seq_printf(s, "TX:");
+        for (i = rx; i < node_num; i++) {
+            seq_printf(s, "%d,", scb[i]);
+        }
+        seq_printf(s, "\n");
+    }
+
+    if ((fwcheck & 0x04) || (fwcheck & 0x08)) {
+        seq_printf(s, "Scap raw(proof off):\n");
+        seq_printf(s, "RX:");
+        for (i = node_num; i < node_num + rx; i++) {
+            seq_printf(s, "%d,", scb[i]);
+        }
+        seq_printf(s, "\n");
+
+        seq_printf(s, "TX:");
+        for (i = node_num + rx; i < node_num * 2; i++) {
+            seq_printf(s, "%d,", scb[i]);
+        }
+        seq_printf(s, "\n");
+    }
+
+    if ((fwcheck & 0x10) || (fwcheck & 0x20)) {
+        seq_printf(s, "Scap raw(high):\n");
+
+        seq_printf(s, "RX:");
+        for (i = node_num * 2; i < node_num * 2 + rx; i++) {
+            seq_printf(s, "%d,", scb[i]);
+        }
+        seq_printf(s, "\n");
+
+        seq_printf(s, "TX:");
+        for (i = node_num * 2 + rx; i < node_num * 3; i++) {
+            seq_printf(s, "%d,", scb[i]);
+        }
+        seq_printf(s, "\n");
+    }
+
+    fts_free(scb);
+
+exit:
+
+    ret = enter_work_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter work mode fails");
+    }
+
+    return 0;
+}
+
+static int proc_test_scb_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_scb_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_scb_fops = {
+    .proc_open   = proc_test_scb_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release  = single_release,
+};
+#else
+static const struct file_operations proc_test_scb_fops = {
+    .owner  = THIS_MODULE,
+    .open   = proc_test_scb_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+/* Noise test */
+static int proc_test_noise_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    int i = 0;
+    int node_num = 0;
+    u8 tx = 0;
+    u8 rx = 0;
+    int *noise;
+
+    ret = enter_factory_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter factory mode fails");
+        return ret;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
+    if (ret < 0) {
+        FTS_ERROR("read tx fails");
+        goto exit;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
+    if (ret < 0) {
+        FTS_ERROR("read rx fails");
+        goto exit;
+    }
+
+    node_num = tx * rx;
+    noise = fts_malloc(node_num * sizeof(int));
+    if (!noise) {
+        FTS_ERROR("malloc memory for raw fails");
+        ret = -ENOMEM;
+        goto exit;
+    }
+
+    /*get raw data*/
+    fts_test_get_noise(noise, tx, rx);
+
+    /*output raw data*/
+    seq_printf(s, "     ");
+    for (i = 0; i < rx; i++)
+        seq_printf(s, " RX%02d ", (i + 1));
+
+    for (i = 0; i < node_num; i++) {
+        if ((i % rx) == 0)
+            seq_printf(s, "\nTX%02d:%5d,", (i / rx + 1), noise[i]);
+        else
+            seq_printf(s, "%5d,", noise[i]);
+    }
+
+    seq_printf(s, "\n\n");
+
+    fts_free(noise);
+
+exit:
+
+    ret = enter_work_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter work mode fails");
+    }
+
+    return 0;
+}
+
+static int proc_test_noise_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_noise_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_noise_fops = {
+    .proc_open   = proc_test_noise_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release  = single_release,
+};
+#else
+static const struct file_operations proc_test_noise_fops = {
+    .owner  = THIS_MODULE,
+    .open   = proc_test_noise_open,
     .read   = seq_read,
     .llseek = seq_lseek,
     .release = single_release,
@@ -2676,6 +3102,92 @@ static const struct file_operations proc_test_short_fops = {
 };
 #endif
 
+/* Panel_Differ test */
+static int proc_test_panel_differ_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    int i = 0;
+    int node_num = 0;
+    u8 tx = 0;
+    u8 rx = 0;
+    int *panel_differ;
+
+    ret = enter_factory_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter factory mode fails");
+        return ret;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
+    if (ret < 0) {
+        FTS_ERROR("read tx fails");
+        goto exit;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
+    if (ret < 0) {
+        FTS_ERROR("read rx fails");
+        goto exit;
+    }
+
+    node_num = tx * rx;
+    panel_differ = fts_malloc(node_num * sizeof(int));
+    if (!panel_differ) {
+        FTS_ERROR("malloc memory for raw fails");
+        ret = -ENOMEM;
+        goto exit;
+    }
+
+    /*get panel_differ data*/
+    fts_test_get_panel_differ(panel_differ, tx, rx);
+
+    /*output panel_differ data*/
+    seq_printf(s, "     ");
+    for (i = 0; i < rx; i++)
+        seq_printf(s, " RX%02d ", (i + 1));
+
+    for (i = 0; i < node_num; i++) {
+        if ((i % rx) == 0)
+            seq_printf(s, "\nTX%02d:%5d,", (i / rx + 1), panel_differ[i]);
+        else
+            seq_printf(s, "%5d,", panel_differ[i]);
+    }
+
+    seq_printf(s, "\n\n");
+
+    fts_free(panel_differ);
+
+exit:
+
+    ret = enter_work_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter work mode fails");
+    }
+
+    return 0;
+}
+
+static int proc_test_panel_differ_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_panel_differ_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_panel_differ_fops = {
+    .proc_open   = proc_test_panel_differ_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release = single_release,
+};
+#else
+static const struct file_operations proc_test_panel_differ_fops = {
+    .open   = proc_test_panel_differ_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
 #define FTS_PROC_TEST_DIR       "selftest"
 
 struct proc_dir_entry *fts_proc_test_dir;
@@ -2685,7 +3197,12 @@ struct proc_dir_entry *proc_test_chnum;
 struct proc_dir_entry *proc_test_reset_pin;
 struct proc_dir_entry *proc_test_int_pin;
 struct proc_dir_entry *proc_test_raw;
+struct proc_dir_entry *proc_test_uniformity;
+struct proc_dir_entry *proc_test_sraw;
+struct proc_dir_entry *proc_test_scb;
+struct proc_dir_entry *proc_test_noise;
 struct proc_dir_entry *proc_test_short;
+struct proc_dir_entry *proc_test_panel_differ;
 
 #define MODE_OWNER_READ   0400
 static int fts_create_test_procs(struct fts_ts_data *ts_data)
@@ -2734,10 +3251,46 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
         return -ENOMEM;
     }
 
+    proc_test_uniformity = proc_create_data("Rawdata_Uniformity",
+        MODE_OWNER_READ, fts_proc_test_dir,
+        &proc_test_uniformity_fops, ts_data);
+    if (!proc_test_raw) {
+        FTS_ERROR("create proc_test_uniformity entry fail");
+        return -ENOMEM;
+    }
+
+    proc_test_sraw = proc_create_data("Scap_Rawdata", MODE_OWNER_READ,
+        fts_proc_test_dir, &proc_test_sraw_fops, ts_data);
+    if (!proc_test_sraw) {
+        FTS_ERROR("create proc_test_sraw entry fail");
+        return -ENOMEM;
+    }
+
+    proc_test_scb = proc_create_data("Scap_CB", MODE_OWNER_READ,
+        fts_proc_test_dir, &proc_test_scb_fops, ts_data);
+    if (!proc_test_scb) {
+        FTS_ERROR("create proc_test_scb entry fail");
+        return -ENOMEM;
+    }
+
+    proc_test_noise = proc_create_data("Noise", MODE_OWNER_READ,
+        fts_proc_test_dir, &proc_test_noise_fops, ts_data);
+    if (!proc_test_noise) {
+        FTS_ERROR("create proc_test_noise entry fail");
+        return -ENOMEM;
+    }
+
     proc_test_short = proc_create_data("Short", MODE_OWNER_READ,
         fts_proc_test_dir, &proc_test_short_fops, ts_data);
     if (!proc_test_short) {
         FTS_ERROR("create proc_test_short entry fail");
+        return -ENOMEM;
+    }
+
+    proc_test_panel_differ = proc_create_data("Panel_Differ", MODE_OWNER_READ,
+        fts_proc_test_dir, &proc_test_panel_differ_fops, ts_data);
+    if (!proc_test_panel_differ) {
+        FTS_ERROR("create proc_test_panel_differ entry fail");
         return -ENOMEM;
     }
 
@@ -2767,8 +3320,23 @@ static void fts_free_test_procs(void)
     if (proc_test_raw)
         proc_remove(proc_test_raw);
 
+    if (proc_test_uniformity)
+        proc_remove(proc_test_uniformity);
+
+    if (proc_test_sraw)
+        proc_remove(proc_test_sraw);
+
+    if (proc_test_scb)
+        proc_remove(proc_test_scb);
+
+    if (proc_test_noise)
+        proc_remove(proc_test_noise);
+
     if (proc_test_short)
         proc_remove(proc_test_short);
+
+    if (proc_test_panel_differ)
+        proc_remove(proc_test_panel_differ);
 
     FTS_TEST_FUNC_EXIT();
 }
