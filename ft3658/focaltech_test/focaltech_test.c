@@ -992,6 +992,14 @@ int get_cb_mc_sc(u8 wp, int byte_num, int *cb_buf, enum byte_mode mode)
         return ret;
     }
 
+    if (fts_ftest->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            return ret;
+        }
+    }
+
     /* read cb */
     ret = get_cb_sc(byte_num, cb_buf, mode);
     if (ret < 0) {
@@ -2070,10 +2078,12 @@ static int fts_test_entry(char *ini_file_name)
 
     /* Start testing according to the test configuration */
     if (true == fts_test_start()) {
-        FTS_TEST_SAVE_INFO("\n\n=======Tp test pass.\n");
+        FTS_TEST_SAVE_INFO("=======Tp test pass.");
+        if (fts_ftest->s) seq_printf(fts_ftest->s, "=======Tp test pass.\n");
         fts_ftest->result = true;
     } else {
-        FTS_TEST_SAVE_INFO("\n\n=======Tp test failure.\n");
+        FTS_TEST_SAVE_INFO("=======Tp test failure.");
+        if (fts_ftest->s) seq_printf(fts_ftest->s, "=======Tp test failure.\n");
         fts_ftest->result = false;
 #if defined(TEST_SAVE_FAIL_RESULT) && TEST_SAVE_FAIL_RESULT
         do_gettimeofday(&(fts_ftest->tv));
@@ -2133,6 +2143,7 @@ static ssize_t fts_test_store(
     fts_esdcheck_switch(DISABLE);
 #endif
 
+    fts_ftest->s = NULL;
     ret = fts_enter_test_environment(1);
     if (ret < 0) {
         FTS_ERROR("enter test environment fail");
@@ -2207,6 +2218,84 @@ static int fts_test_func_init(struct fts_ts_data *ts_data)
     fts_ftest->ts_data = ts_data;
     return 0;
 }
+
+/*run_os_test*/
+#define RUN_OS_TEST_INI_FILE        "Conf_MultipleTest.ini"
+static int proc_run_os_test_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    struct fts_test *tdata = (struct fts_test *)s->private;
+    struct fts_ts_data *ts_data = NULL;
+    struct input_dev *input_dev = NULL;
+
+    if (s->size <= (PAGE_SIZE * 4)) {
+        s->count = s->size;
+        FTS_TEST_ERROR("Buffer size:%d, return ", (int)s->size);
+        return 0;
+    }
+
+    if (!tdata) {
+        FTS_TEST_ERROR("test data is null, return");
+        return -EINVAL;
+    }
+
+    ts_data = tdata->ts_data;
+    input_dev = ts_data->input_dev;
+    if (ts_data->suspended) {
+        FTS_TEST_ERROR("In suspend, no test, return");
+        return -EINVAL;
+    }
+
+    mutex_lock(&input_dev->mutex);
+    fts_irq_disable();
+
+#if defined(FTS_ESDCHECK_EN) && (FTS_ESDCHECK_EN)
+    fts_esdcheck_switch(DISABLE);
+#endif
+
+    tdata->s = s;
+    ret = fts_enter_test_environment(1);
+    if (ret < 0) {
+        FTS_ERROR("enter test environment fail");
+    } else {
+        fts_test_entry(RUN_OS_TEST_INI_FILE);
+    }
+    ret = fts_enter_test_environment(0);
+    if (ret < 0) {
+        FTS_ERROR("enter normal environment fail");
+    }
+
+#if defined(FTS_ESDCHECK_EN) && (FTS_ESDCHECK_EN)
+    fts_esdcheck_switch(ENABLE);
+#endif
+
+    fts_irq_enable();
+    mutex_unlock(&input_dev->mutex);
+
+    return 0;
+}
+
+static int proc_run_os_test_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_run_os_test_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_run_os_test_fops = {
+    .proc_open   = proc_run_os_test_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release  = single_release,
+};
+#else
+static const struct file_operations proc_run_os_test_fops = {
+    .owner  = THIS_MODULE,
+    .open   = proc_run_os_test_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
 
 /*FW Version test*/
 static int proc_test_fwver_show(struct seq_file *s, void *v)
@@ -2590,6 +2679,7 @@ static const struct file_operations proc_test_short_fops = {
 #define FTS_PROC_TEST_DIR       "selftest"
 
 struct proc_dir_entry *fts_proc_test_dir;
+struct proc_dir_entry *proc_run_os_test;
 struct proc_dir_entry *proc_test_fwver;
 struct proc_dir_entry *proc_test_chnum;
 struct proc_dir_entry *proc_test_reset_pin;
@@ -2601,6 +2691,13 @@ struct proc_dir_entry *proc_test_short;
 static int fts_create_test_procs(struct fts_ts_data *ts_data)
 {
     int ret = 0;
+
+    proc_run_os_test = proc_create_data("run_os_test", MODE_OWNER_READ,
+        fts_proc_test_dir, &proc_run_os_test_fops, fts_ftest);
+    if (!proc_run_os_test) {
+        FTS_ERROR("create proc_run_os_test entry fail");
+        return -ENOMEM;
+    }
 
     proc_test_fwver = proc_create("FW_Version", MODE_OWNER_READ,
         ts_data->proc_touch_entry, &proc_test_fwver_fops);
@@ -2651,6 +2748,9 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
 static void fts_free_test_procs(void)
 {
     FTS_TEST_FUNC_ENTER();
+
+    if (proc_run_os_test)
+        proc_remove(proc_run_os_test);
 
     if (proc_test_fwver)
         proc_remove(proc_test_fwver);

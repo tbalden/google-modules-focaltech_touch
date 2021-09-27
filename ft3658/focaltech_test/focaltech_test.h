@@ -455,6 +455,7 @@ struct fts_test {
         struct sc_test sc;
     } ic;
 
+    struct seq_file *s;
     struct test_funcs *func;
     struct fts_test_data testdata;
     char *testresult;

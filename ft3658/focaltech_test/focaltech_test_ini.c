@@ -15,7 +15,7 @@
 /*****************************************************************************
 * Private constant and macro definitions using #define
 *****************************************************************************/
-#define FTS_INI_REQUEST_SUPPORT              0
+#define FTS_INI_REQUEST_SUPPORT              1
 
 struct ini_ic_type ic_types[] = {
     {"FT5X46",  0x54000002},
@@ -228,116 +228,6 @@ static int fts_atoi(char *nptr)
     return (int)fts_atol(nptr);
 }
 
-static int fts_test_get_ini_size(char *config_name)
-{
-    off_t fsize = 0;
-#ifdef FTS_VFS_EN
-    struct file *pfile = NULL;
-    struct inode *inode = NULL;
-    char filepath[FILE_NAME_LENGTH] = { 0 };
-
-    FTS_TEST_FUNC_ENTER();
-
-    memset(filepath, 0, sizeof(filepath));
-    snprintf(filepath, FILE_NAME_LENGTH, "%s%s",
-             FTS_INI_FILE_PATH, config_name);
-
-    if (NULL == pfile)
-        pfile = filp_open(filepath, O_RDONLY, 0);
-    if (IS_ERR(pfile)) {
-        FTS_TEST_ERROR("error occured while opening file %s.",  filepath);
-        return -EIO;
-    }
-
-#if 1
-    inode = pfile->f_inode;
-#else
-    /* reserved for linux earlier verion */
-    inode = pfile->f_dentry->d_inode;
-#endif
-    fsize = inode->i_size;
-    filp_close(pfile, NULL);
-
-    FTS_TEST_FUNC_ENTER();
-#endif
-    return fsize;
-}
-
-static int fts_test_read_ini_data(char *config_name, char *config_buf)
-{
-    struct file *pfile = NULL;
-    struct inode *inode = NULL;
-    off_t fsize = 0;
-    char filepath[FILE_NAME_LENGTH] = { 0 };
-#ifdef FTS_VFS_EN
-    loff_t pos = 0;
-    mm_segment_t old_fs;
-#endif
-
-    FTS_TEST_FUNC_ENTER();
-
-    memset(filepath, 0, sizeof(filepath));
-    snprintf(filepath, FILE_NAME_LENGTH, "%s%s",
-             FTS_INI_FILE_PATH, config_name);
-    if (NULL == pfile) {
-        pfile = filp_open(filepath, O_RDONLY, 0);
-    }
-    if (IS_ERR(pfile)) {
-        FTS_TEST_ERROR("error occured while opening file %s.",  filepath);
-        return -EIO;
-    }
-
-#if 1
-    inode = pfile->f_inode;
-#else
-    /* reserved for linux earlier verion */
-    inode = pfile->f_dentry->d_inode;
-#endif
-    fsize = inode->i_size;
-#ifdef FTS_VFS_EN
-    old_fs = get_fs();
-    set_fs(KERNEL_DS);
-    pos = 0;
-    vfs_read(pfile, config_buf, fsize, &pos);
-    filp_close(pfile, NULL);
-    set_fs(old_fs);
-#else
-    return -EINVAL;
-#endif
-    FTS_TEST_FUNC_EXIT();
-    return 0;
-}
-
-static int fts_test_get_ini_default(struct ini_data *ini, char *fwname)
-{
-    int ret = 0;
-    int inisize = 0;
-
-    inisize = fts_test_get_ini_size(fwname);
-    FTS_TEST_DBG("ini file size:%d", inisize);
-    if (inisize <= 0) {
-        FTS_TEST_ERROR("get ini file size fail");
-        return -ENODATA;
-    }
-
-    ini->data = vmalloc(inisize + 1);
-    if (NULL == ini->data) {
-        FTS_TEST_ERROR("malloc memory for ini data fail");
-        return -ENOMEM;
-    }
-    memset(ini->data, 0, inisize + 1);
-    ini->length = inisize + 1;
-
-    ret = fts_test_read_ini_data(fwname, ini->data);
-    if (ret) {
-        FTS_TEST_ERROR("read ini file fail");
-        return -ENODATA;
-    }
-    ini->data[inisize] = '\n';  /* last line is null line */
-
-    return 0;
-}
-
 static int fts_test_get_ini_via_request_firmware(struct ini_data *ini, char *fwname)
 {
     int ret = 0;
@@ -352,7 +242,7 @@ static int fts_test_get_ini_via_request_firmware(struct ini_data *ini, char *fwn
     if (0 == ret) {
         FTS_TEST_INFO("firmware request(%s) success", fwname);
         ini->data = vmalloc(fw->size + 1);
-        if (NULL == ini->data) {
+        if (ini->data == NULL) {
             FTS_TEST_ERROR("ini->data buffer vmalloc fail");
             ret = -ENOMEM;
         } else {
@@ -1366,21 +1256,17 @@ int fts_test_get_testparam_from_ini(char *config_name)
 
     ret = fts_test_get_ini_via_request_firmware(ini, config_name);
     if (ret != 0) {
-        ret = fts_test_get_ini_default(ini, config_name);
-        if (ret < 0) {
-            FTS_TEST_ERROR("get ini(default) fail");
-            goto get_ini_err;
-        }
+        FTS_TEST_INFO("read ini fail,ret=%d", ret);
+        return ret;
     }
 
     ini->keyword_num_total = 0;
     ini->section_num = 0;
 
     ini->tmp = vmalloc(sizeof(struct ini_keyword) * MAX_KEYWORD_NUM);
-    if (NULL == ini->tmp) {
+    if (ini->tmp == NULL) {
         FTS_TEST_ERROR("malloc memory for ini tmp fail");
-        ret = -ENOMEM;
-        goto get_ini_err;
+        return -ENOMEM;
     }
     memset(ini->tmp, 0, sizeof(struct ini_keyword) * MAX_KEYWORD_NUM);
 
@@ -1398,7 +1284,6 @@ int fts_test_get_testparam_from_ini(char *config_name)
         goto get_ini_err;
     }
 
-    ret = 0;
 get_ini_err:
     if (ini->tmp) {
         vfree(ini->tmp);

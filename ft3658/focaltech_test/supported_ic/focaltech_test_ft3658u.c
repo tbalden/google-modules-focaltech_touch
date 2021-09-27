@@ -149,7 +149,7 @@ static int short_test_ch_to_gnd(
         if (short_res[i] < min_cg) {
             *result = false;
             if (!is_cg_short) {
-                FTS_TEST_SAVE_INFO("\nGND Short:\n");
+                FTS_TEST_SAVE_INFO("GND Short:");
                 is_cg_short = true;
             }
 
@@ -238,7 +238,7 @@ static int short_test_ch_to_ch(
             if (short_res[adc_cnt] < min_cc) {
                 *result = false;
                 if (!is_cc_short) {
-                    FTS_TEST_SAVE_INFO("\nMutual Short:\n");
+                    FTS_TEST_SAVE_INFO("Mutual Short:");
                     is_cc_short = true;
                 }
 
@@ -275,7 +275,7 @@ static int ft5652_rawdata_test(struct fts_test *tdata, bool *test_result)
     struct mc_sc_threshold *thr = &tdata->ic.mc_sc.thr;
 
     FTS_TEST_FUNC_ENTER();
-    FTS_TEST_SAVE_INFO("\n============ Test Item: rawdata test\n");
+    FTS_TEST_SAVE_INFO("====== Test Item: rawdata test");
     memset(tdata->buffer, 0, tdata->buffer_length);
     rawdata = tdata->buffer;
 
@@ -324,6 +324,14 @@ static int ft5652_rawdata_test(struct fts_test *tdata, bool *test_result)
         goto restore_reg;
     }
 
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            goto restore_reg;
+        }
+    }
+
     ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, 0x01);
     if (ret < 0) {
         FTS_TEST_SAVE_ERR("set raw type fail,ret=%d\n", ret);
@@ -335,6 +343,14 @@ static int ft5652_rawdata_test(struct fts_test *tdata, bool *test_result)
     if (ret < 0) {
         FTS_TEST_SAVE_ERR("set fir fail,ret=%d\n", ret);
         goto restore_reg;
+    }
+
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            goto restore_reg;
+        }
     }
 
     /*********************GET RAWDATA*********************/
@@ -363,9 +379,16 @@ restore_reg:
         FTS_TEST_SAVE_ERR("restore 0x0A fail,ret=%d\n", ret);
     }
 
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
+    }
+
     ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, data_type);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("set raw type fail,ret=%d\n", ret);
+        FTS_TEST_SAVE_ERR("restore raw type fail,ret=%d\n", ret);
     }
 
     ret = fts_test_write_reg(FACTORY_REG_DATA_SELECT, data_sel);
@@ -373,13 +396,22 @@ restore_reg:
         FTS_TEST_SAVE_ERR("restore 0x06 fail,ret=%d\n", ret);
     }
 
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
+    }
+
 test_err:
     if (result) {
         *test_result = true;
-        FTS_TEST_SAVE_INFO("------ rawdata test PASS\n");
+        FTS_TEST_SAVE_INFO("====== rawdata test PASS");
+        if (tdata->s) seq_printf(tdata->s, "------ rawdata test PASS\n");
     } else {
         *test_result = false;
-        FTS_TEST_SAVE_INFO("------ rawdata test NG\n");
+        FTS_TEST_SAVE_INFO("====== rawdata test NG");
+        if (tdata->s) seq_printf(tdata->s, "------ rawdata test NG\n");
     }
 
     /* save test data */
@@ -418,7 +450,7 @@ static int ft5652_uniformity_test(struct fts_test *tdata, bool *test_result)
     bool result3 = false;
 
     FTS_TEST_FUNC_ENTER();
-    FTS_TEST_SAVE_INFO("\n============ Test Item: rawdata unfiormity test\n");
+    FTS_TEST_SAVE_INFO("====== Test Item: rawdata unfiormity test");
     memset(tdata->buffer, 0, tdata->buffer_length);
     rawdata = tdata->buffer;
     tx_num = tdata->node.tx_num;
@@ -476,6 +508,14 @@ static int ft5652_uniformity_test(struct fts_test *tdata, bool *test_result)
         goto restore_reg;
     }
 
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            goto restore_reg;
+        }
+    }
+
     ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, 0x01);
     if (ret < 0) {
         FTS_TEST_SAVE_ERR("set raw type fail,ret=%d\n", ret);
@@ -487,6 +527,14 @@ static int ft5652_uniformity_test(struct fts_test *tdata, bool *test_result)
     if (ret < 0) {
         FTS_TEST_SAVE_ERR("set fir fail,ret=%d\n", ret);
         goto restore_reg;
+    }
+
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            goto restore_reg;
+        }
     }
 
     /* change register value before,need to lose 3 frame data */
@@ -584,9 +632,16 @@ restore_reg:
         FTS_TEST_SAVE_ERR("restore 0x06 fail,ret=%d\n", ret);
     }
 
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
+    }
+
     ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, data_type);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("set raw type fail,ret=%d\n", ret);
+        FTS_TEST_SAVE_ERR("restore raw type fail,ret=%d\n", ret);
     }
 
     ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, fre);
@@ -594,13 +649,22 @@ restore_reg:
         FTS_TEST_SAVE_ERR("restore 0x0A fail,ret=%d\n", ret);
     }
 
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
+    }
+
 test_err:
     if (result && result2 && result3) {
         *test_result = true;
-        FTS_TEST_SAVE_INFO("uniformity test is OK\n");
+        FTS_TEST_SAVE_INFO("uniformity test is Pass");
+        if (tdata->s) seq_printf(tdata->s, "------ uniformity test is Pass\n");
     } else {
         *test_result = false;
-        FTS_TEST_SAVE_ERR("uniformity test is NG\n");
+        FTS_TEST_SAVE_ERR("uniformity test is NG");
+        if (tdata->s) seq_printf(tdata->s, "------ uniformity test is NG\n");
     }
 
     fts_test_save_data("Rawdata Uniformity Test",
@@ -634,7 +698,7 @@ static int ft5652_scap_cb_test(struct fts_test *tdata, bool *test_result)
     struct mc_sc_threshold *thr = &tdata->ic.mc_sc.thr;
 
     FTS_TEST_FUNC_ENTER();
-    FTS_TEST_SAVE_INFO("\n============ Test Item: Scap CB Test\n");
+    FTS_TEST_SAVE_INFO("====== Test Item: Scap CB Test");
     memset(tdata->buffer, 0, tdata->buffer_length);
     scap_cb = tdata->buffer;
     byte_num = tdata->sc_node.node_num * 2;
@@ -822,10 +886,12 @@ restore_reg:
 test_err:
     if (tmp_result && tmp2_result && tmp3_result && tmp4_result) {
         *test_result = true;
-        FTS_TEST_SAVE_INFO("\n------ scap cb test PASS\n");
+        FTS_TEST_SAVE_INFO("====== scap cb test PASS");
+        if (tdata->s) seq_printf(tdata->s, "------ scap cb test PASS\n");
     } else {
         *test_result = false;
-        FTS_TEST_SAVE_ERR("\n------ scap cb test NG\n");
+        FTS_TEST_SAVE_ERR("====== scap cb test NG");
+        if (tdata->s) seq_printf(tdata->s, "------ scap cb test NG\n");
     }
 
     /* save test data */
@@ -857,7 +923,7 @@ static int ft5652_scap_rawdata_test(struct fts_test *tdata, bool *test_result)
     struct mc_sc_threshold *thr = &tdata->ic.mc_sc.thr;
 
     FTS_TEST_FUNC_ENTER();
-    FTS_TEST_SAVE_INFO("\n============ Test Item: Scap Rawdata Test\n");
+    FTS_TEST_SAVE_INFO("====== Test Item: Scap Rawdata Test");
     memset(tdata->buffer, 0, tdata->buffer_length);
     scap_rawdata = tdata->buffer;
 
@@ -1048,16 +1114,18 @@ restore_reg:
 
     ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, data_type);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("set raw type fail,ret=%d\n", ret);
+        FTS_TEST_SAVE_ERR("restore raw type fail,ret=%d\n", ret);
     }
 
 test_err:
     if (tmp_result && tmp2_result && tmp3_result && tmp4_result) {
         *test_result = true;
-        FTS_TEST_SAVE_INFO("\n------ scap rawdata test PASS\n");
+        FTS_TEST_SAVE_INFO("====== scap rawdata test PASS");
+        if (tdata->s) seq_printf(tdata->s, "------ scap rawdata test PASS\n");
     } else {
         *test_result = false;
-        FTS_TEST_SAVE_INFO("\n------ scap rawdata test NG\n");
+        FTS_TEST_SAVE_INFO("====== scap rawdata test NG");
+        if (tdata->s) seq_printf(tdata->s, "------ scap rawdata test NG\n");
     }
 
     /* save data */
@@ -1080,7 +1148,7 @@ static int ft5652_short_test(struct fts_test *tdata, bool *test_result)
     bool cc_result = false;
 
     FTS_TEST_FUNC_ENTER();
-    FTS_TEST_SAVE_INFO("\n============ Test Item: Short Test\n");
+    FTS_TEST_SAVE_INFO("====== Test Item: Short Test");
     ch_num = tdata->sc_node.tx_num + tdata->sc_node.rx_num;
 
     if (ch_num >= SC_NUM_MAX) {
@@ -1147,11 +1215,13 @@ restore_reg:
     }
 
 test_err:
-    if (ca_result || (!ca_result && (cg_result && cc_result))) {
-        FTS_TEST_SAVE_INFO("------ short test PASS\n");
+    if (ca_result) {
+        FTS_TEST_SAVE_INFO("====== short test PASS");
+        if (tdata->s) seq_printf(tdata->s, "------ short test PASS\n");
         *test_result = true;
     } else {
-        FTS_TEST_SAVE_ERR("------ short test NG\n");
+        FTS_TEST_SAVE_ERR("====== short test NG");
+        if (tdata->s) seq_printf(tdata->s, "------ short test NG\n");
         *test_result = false;
     }
 
@@ -1173,7 +1243,7 @@ static int ft5652_panel_differ_test(struct fts_test *tdata, bool *test_result)
     struct mc_sc_threshold *thr = &tdata->ic.mc_sc.thr;
 
     FTS_TEST_FUNC_ENTER();
-    FTS_TEST_SAVE_INFO("\n============ Test Item: Panel Differ Test\n");
+    FTS_TEST_SAVE_INFO("====== Test Item: Panel Differ Test");
     memset(tdata->buffer, 0, tdata->buffer_length);
     panel_differ = tdata->buffer;
 
@@ -1241,11 +1311,27 @@ static int ft5652_panel_differ_test(struct fts_test *tdata, bool *test_result)
         goto restore_reg;
     }
 
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            goto restore_reg;
+        }
+    }
+
     /* fir disable */
     ret = fts_test_write_reg(FACTORY_REG_FIR, 0);
     if (ret < 0) {
         FTS_TEST_SAVE_ERR("set fir fail,ret=%d\n", ret);
         goto restore_reg;
+    }
+
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            goto restore_reg;
+        }
     }
 
     ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, 0x01);
@@ -1258,6 +1344,14 @@ static int ft5652_panel_differ_test(struct fts_test *tdata, bool *test_result)
     if (ret < 0) {
         FTS_TEST_SAVE_ERR("set data sel fail,ret=%d\n", ret);
         goto restore_reg;
+    }
+
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            goto restore_reg;
+        }
     }
 
     /* get rawdata */
@@ -1294,9 +1388,16 @@ restore_reg:
         FTS_TEST_SAVE_ERR("restore 0x0A fail,ret=%d\n", ret);
     }
 
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
+    }
+
     ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, data_type);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("set raw type fail,ret=%d\n", ret);
+        FTS_TEST_SAVE_ERR("restore raw type fail,ret=%d\n", ret);
     }
 
     ret = fts_test_write_reg(FACTORY_REG_FIR, fir);
@@ -1304,19 +1405,35 @@ restore_reg:
         FTS_TEST_SAVE_ERR("restore 0xFB fail,ret=%d\n", ret);
     }
 
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
+    }
+
     ret = fts_test_write_reg(FACTORY_REG_DATA_SELECT, data_sel);
     if (ret < 0) {
         FTS_TEST_SAVE_ERR("set data sel fail,ret=%d\n", ret);
+    }
+
+    if (tdata->func->param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
     }
 
 test_err:
     /* result */
     if (tmp_result) {
         *test_result = true;
-        FTS_TEST_SAVE_INFO("------ panel differ test PASS\n");
+        FTS_TEST_SAVE_INFO("====== panel differ test PASS");
+        if (tdata->s) seq_printf(tdata->s, "------ panel differ test PASS\n");
     } else {
         *test_result = false;
-        FTS_TEST_SAVE_ERR("------ panel differ test NG\n");
+        FTS_TEST_SAVE_ERR("====== panel differ test NG");
+        if (tdata->s) seq_printf(tdata->s, "------ panel differ test NG\n");
     }
 
     /* save test data */
@@ -1334,52 +1451,58 @@ static int start_test_ft5652(void)
     struct mc_sc_testitem *test_item = &tdata->ic.mc_sc.u.item;
     bool temp_result = false;
     bool test_result = true;
+    u8 state = 0xFF;
 
     FTS_TEST_FUNC_ENTER();
-    FTS_TEST_INFO("test item:0x%x", fts_ftest->ic.mc_sc.u.tmp);
+    FTS_TEST_INFO("test item:0x%x", tdata->ic.mc_sc.u.tmp);
+
+    fts_test_read_reg(FACTORY_REG_PARAM_UPDATE_STATE_TOUCH, &state);
+    tdata->func->param_update_support = (state == 0xAA);
+    FTS_TEST_INFO("Param update:%d", tdata->func->param_update_support);
+
 
     /* rawdata test */
-    if (true == test_item->rawdata_test) {
+    if (test_item->rawdata_test == true) {
         ret = ft5652_rawdata_test(tdata, &temp_result);
-        if ((ret < 0) || (false == temp_result)) {
+        if ((ret < 0) || (temp_result == false)) {
             test_result = false;
         }
     }
 
-    if (true == test_item->rawdata_uniformity_test) {
+    if (test_item->rawdata_uniformity_test == true) {
         ret = ft5652_uniformity_test(tdata, &temp_result);
-        if ((ret < 0) || (false == temp_result)) {
+        if ((ret < 0) || (temp_result == false)) {
             test_result = false;
         }
     }
 
     /* scap_cb test */
-    if (true == test_item->scap_cb_test) {
+    if (test_item->scap_cb_test == true) {
         ret = ft5652_scap_cb_test(tdata, &temp_result);
-        if ((ret < 0) || (false == temp_result)) {
+        if ((ret < 0) || (temp_result == false)) {
             test_result = false;
         }
     }
 
     /* scap_rawdata test */
-    if (true == test_item->scap_rawdata_test) {
+    if (test_item->scap_rawdata_test == true) {
         ret = ft5652_scap_rawdata_test(tdata, &temp_result);
-        if ((ret < 0) || (false == temp_result)) {
+        if ((ret < 0) || (temp_result == false)) {
             test_result = false;
         }
     }
 
     /* short test */
-    if (true == test_item->short_test) {
+    if (test_item->short_test == true) {
         ret = ft5652_short_test(tdata, &temp_result);
-        if ((ret < 0) || (false == temp_result)) {
+        if ((ret < 0) || (temp_result == false)) {
             test_result = false;
         }
     }
     /* panel differ test */
-    if (true == test_item->panel_differ_test) {
+    if (test_item->panel_differ_test == true) {
         ret = ft5652_panel_differ_test(tdata, &temp_result);
-        if ((ret < 0) || (false == temp_result)) {
+        if ((ret < 0) || (temp_result == false)) {
             test_result = false;
         }
     }
@@ -1398,6 +1521,7 @@ struct test_funcs test_func_ft5652 = {
     .mc_sc_short_v2 = true,
     .raw_u16 = true,
     .cb_high_support = true,
+    .param_update_support = false,
     .start_test = start_test_ft5652,
 };
 
@@ -1453,7 +1577,7 @@ static int fts_test_get_raw_restore_reg(u8 fre, u8 data_sel, u8 data_type) {
     /* set the origin value */
     ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, fre);
     if (ret < 0) {
-        FTS_TEST_ERROR("restore FACTORY_REG_FRE_LIST fail,ret=%d\n", ret);
+        FTS_TEST_ERROR("restore 0x0A fail,ret=%d\n", ret);
     }
 
     if (param_update_support) {
@@ -1465,7 +1589,7 @@ static int fts_test_get_raw_restore_reg(u8 fre, u8 data_sel, u8 data_type) {
 
     ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, data_type);
     if (ret < 0) {
-        FTS_TEST_ERROR("set FACTORY_REG_DATA_TYPE type fail,ret=%d\n", ret);
+        FTS_TEST_ERROR("restore 0x5B fail,ret=%d\n", ret);
     }
 
     if (param_update_support) {
@@ -1477,7 +1601,7 @@ static int fts_test_get_raw_restore_reg(u8 fre, u8 data_sel, u8 data_type) {
 
     ret = fts_test_write_reg(FACTORY_REG_DATA_SELECT, data_sel);
     if (ret < 0) {
-        FTS_TEST_ERROR("restore FACTORY_REG_DATA_SELECT fail,ret=%d\n", ret);
+        FTS_TEST_ERROR("restore 0x06 fail,ret=%d\n", ret);
     }
 
     if (param_update_support) {
@@ -1503,7 +1627,7 @@ int fts_test_get_raw(int *raw, u8 tx, u8 rx)
     u8 state = 0;
     bool param_update_support = false;
 
-    FTS_INFO("============ Test Item: rawdata test start");
+    FTS_INFO("====== Test Item: rawdata test start");
 
     fts_test_read_reg(FACTORY_REG_PARAM_UPDATE_STATE_TOUCH, &state);
     param_update_support = (0xAA == state);
@@ -1512,19 +1636,19 @@ int fts_test_get_raw(int *raw, u8 tx, u8 rx)
     /* save origin value */
     ret = fts_test_read_reg(FACTORY_REG_FRE_LIST, &fre);
     if (ret) {
-        FTS_TEST_ERROR("read FACTORY_REG_FRE_LIST fail,ret=%d\n", ret);
+        FTS_TEST_ERROR("read 0x0A fail,ret=%d\n", ret);
         return ret;
     }
 
     ret = fts_test_read_reg(FACTORY_REG_DATA_TYPE, &data_type);
     if (ret) {
-        FTS_ERROR("read FACTORY_REG_DATA_TYPE fail,ret=%d\n", ret);
+        FTS_ERROR("read 0x5B fail,ret=%d\n", ret);
         return ret;
     }
 
     ret = fts_test_read_reg(FACTORY_REG_DATA_SELECT, &data_sel);
     if (ret) {
-        FTS_TEST_ERROR("read FACTORY_REG_DATA_SELECT error,ret=%d\n", ret);
+        FTS_TEST_ERROR("read 0x06 fail,ret=%d\n", ret);
         return ret;
     }
 
@@ -1610,7 +1734,7 @@ int fts_test_get_raw(int *raw, u8 tx, u8 rx)
     }
 
     fts_test_get_raw_restore_reg(fre, data_sel, data_type);
-    FTS_TEST_INFO("============ Test Item: rawdata test end\n");
+    FTS_TEST_INFO("====== Test Item: rawdata test end");
     return ret;
 }
 
@@ -1638,7 +1762,7 @@ int fts_test_get_short(int *short_data, u8 tx, u8 rx)
     int numerator = 0;
     u8 res_level = 0;
 
-    FTS_TEST_INFO("============ Test Item: Short Test start\n");
+    FTS_TEST_INFO("====== Test Item: Short Test start");
 
     ret = fts_test_read_reg(FACTROY_REG_SHORT2_RES_LEVEL, &res_level);
     if (ret < 0) {
@@ -1686,7 +1810,7 @@ int fts_test_get_short(int *short_data, u8 tx, u8 rx)
 
     ret = fts_test_get_short_restore_reg(res_level);
 
-    FTS_TEST_INFO("============ Test Item: Short Test end\n");
+    FTS_TEST_INFO("====== Test Item: Short Test end");
     return ret;
 }
 
