@@ -228,11 +228,20 @@ struct fts_ts_data {
 #endif
 };
 
-enum _FTS_BUS_TYPE {
+enum FTS_BUS_TYPE {
     BUS_TYPE_NONE,
     BUS_TYPE_I2C,
     BUS_TYPE_SPI,
     BUS_TYPE_SPI_V2,
+};
+
+enum FTS_SCAN_MODE {
+    MODE_AUTO,
+    MODE_NORMAL_ACTIVE,
+    MODE_NORMAL_IDLE,
+    MODE_LOW_POWER_ACTIVE,
+    MODE_LOW_POWER_IDLE,
+    MODE_CNT,
 };
 
 /*****************************************************************************

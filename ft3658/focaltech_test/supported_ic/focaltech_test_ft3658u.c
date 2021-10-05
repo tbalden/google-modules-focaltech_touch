@@ -1752,7 +1752,7 @@ int fts_test_get_raw(int *raw, u8 tx, u8 rx)
 
     ret = fts_test_read_reg(FACTORY_REG_DATA_TYPE, &data_type);
     if (ret) {
-        FTS_ERROR("read 0x5B fail,ret=%d\n", ret);
+        FTS_TEST_ERROR("read 0x5B fail,ret=%d\n", ret);
         return ret;
     }
 

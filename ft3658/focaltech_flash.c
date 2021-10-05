@@ -1130,62 +1130,12 @@ read_flash_err:
     return ret;
 }
 
-static int fts_read_file(char *file_name, u8 **file_buf)
-{
-    int ret = 0;
-#ifdef FTS_VFS_EN
-    char file_path[FILE_NAME_LENGTH] = { 0 };
-    struct file *filp = NULL;
-    struct inode *inode;
-    mm_segment_t old_fs;
-    loff_t pos;
-    loff_t file_len = 0;
-
-    if ((NULL == file_name) || (NULL == file_buf)) {
-        FTS_ERROR("filename/filebuf is NULL");
-        return -EINVAL;
-    }
-
-    snprintf(file_path, FILE_NAME_LENGTH, "%s%s", FTS_FW_BIN_FILEPATH, file_name);
-    filp = filp_open(file_path, O_RDONLY, 0);
-    if (IS_ERR(filp)) {
-        FTS_ERROR("open %s file fail", file_path);
-        return -ENOENT;
-    }
-
-#if 1
-    inode = filp->f_inode;
-#else
-    /* reserved for linux earlier verion */
-    inode = filp->f_dentry->d_inode;
-#endif
-
-    file_len = inode->i_size;
-    *file_buf = (u8 *)vmalloc(file_len);
-    if (NULL == *file_buf) {
-        FTS_ERROR("file buf malloc fail");
-        filp_close(filp, NULL);
-        return -ENOMEM;
-    }
-
-    old_fs = get_fs();
-    set_fs(KERNEL_DS);
-    pos = 0;
-    ret = vfs_read(filp, *file_buf, file_len , &pos);
-    if (ret < 0)
-        FTS_ERROR("read file fail");
-    FTS_INFO("file len:%d read len:%d pos:%d", (u32)file_len, ret, (u32)pos);
-    filp_close(filp, NULL);
-    set_fs(old_fs);
-#endif
-    return ret;
-}
-
 int fts_upgrade_bin(char *fw_name, bool force)
 {
     int ret = 0;
     u32 fw_file_len = 0;
     u8 *fw_file_buf = NULL;
+    const struct firmware *fw = NULL;
     struct fts_upgrade *upg = fwupgrade;
 
     FTS_INFO("start upgrade with fw bin");
@@ -1200,14 +1150,15 @@ int fts_upgrade_bin(char *fw_name, bool force)
     fts_esdcheck_switch(DISABLE);
 #endif
 
-    ret = fts_read_file(fw_name, &fw_file_buf);
-    if ((ret < 0) || (ret < FTS_MIN_LEN)) {
+    ret = request_firmware(&fw, fw_name, upg->ts_data->dev);
+    if (ret) {
         FTS_ERROR("read fw bin file(%s) fail, len:%d", fw_name, ret);
         goto err_bin;
     }
 
-    fw_file_len = ret;
-    FTS_INFO("fw bin file len:%d", fw_file_len);
+    fw_file_len = (u32)fw->size;
+    fw_file_buf = (u8 *)fw->data;
+    FTS_INFO("request fw succeeds, file len:%d", fw_file_len);
     if (force) {
         if (upg->func->force_upgrade) {
             ret = upg->func->force_upgrade(fw_file_buf, fw_file_len);
@@ -1246,9 +1197,9 @@ err_bin:
     fts_irq_enable();
     upg->ts_data->fw_loading = 0;
 
-    if (fw_file_buf) {
-        vfree(fw_file_buf);
-        fw_file_buf = NULL;
+    if (fw != NULL) {
+        release_firmware(fw);
+        fw = NULL;
     }
     return ret;
 }

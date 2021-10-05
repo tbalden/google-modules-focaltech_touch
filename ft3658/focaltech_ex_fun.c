@@ -1270,6 +1270,328 @@ static struct attribute_group fts_attribute_group = {
     .attrs = fts_attributes
 };
 
+static ssize_t proc_fw_update_write(struct file *filp, const char __user *buff,
+    size_t count, loff_t *ppos)
+{
+    struct fts_ts_data *ts_data = PDE_DATA(file_inode(filp));
+    char fwname[FILE_NAME_LENGTH] = { 0 };
+    int buflen = count;
+
+    FTS_INFO("upgrade with bin file through proc node");
+    if (!ts_data) {
+        FTS_ERROR("ts_data is null");
+        return -EINVAL;
+    }
+
+    if ((buflen <= 0) || (buflen >= FILE_NAME_LENGTH)) {
+        FTS_ERROR("proc write length(%d) fails", buflen);
+        return -EINVAL;
+    }
+
+    if (copy_from_user(fwname, buff, buflen)) {
+        FTS_ERROR("copy from user error");
+        return -EFAULT;
+    }
+    fwname[buflen - 1] = '\0';
+
+    mutex_lock(&ts_data->input_dev->mutex);
+    fts_upgrade_bin(fwname, 0);
+    mutex_unlock(&ts_data->input_dev->mutex);
+
+    return count;
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_fw_update_fops = {
+    .proc_write  = proc_fw_update_write,
+};
+#else
+static const struct file_operations proc_fw_update_fops = {
+    .owner  = THIS_MODULE,
+    .write = proc_fw_update_write,
+};
+#endif
+
+/* scan modes */
+static ssize_t proc_scan_modes_read(struct file *filp, char __user *buff,
+    size_t count, loff_t *ppos)
+{
+    char tmpbuf[PROC_BUF_SIZE] = { 0 };
+    int cnt = 0;
+    loff_t pos = *ppos;
+
+    if (pos)
+        return 0;
+
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "%s\n",
+        "scan_modes=0,1,2,3,4");
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "%s\n",
+        "0:Auto mode");
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "%s\n",
+         "1:Normal Active");
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "%s\n",
+        "2:Normal Idle");
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "%s\n",
+        "3:Low Power Active");
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "%s\n",
+        "4:Low Power Idle");
+
+    if (copy_to_user(buff, tmpbuf, cnt)) {
+        FTS_ERROR("copy to user error");
+        return -EFAULT;
+    }
+
+    *ppos = pos + cnt;
+    return cnt;
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_scan_modes_fops = {
+    .proc_read   = proc_scan_modes_read,
+};
+#else
+static const struct file_operations proc_scan_modes_fops = {
+    .owner  = THIS_MODULE,
+    .read   = proc_scan_modes_read,
+};
+#endif
+
+/* touch mode */
+static ssize_t proc_touch_mode_read(struct file *filp, char __user *buff,
+    size_t count, loff_t *ppos)
+{
+    int cnt = 0;
+    int ret = 0;
+    char tmpbuf[PROC_BUF_SIZE] = { 0 };
+    u8 gesture_mode = 0;
+    u8 power_mode = 0;
+    u8 monitor_ctrl = 0;
+    loff_t pos = *ppos;
+
+    if (pos)
+        return 0;
+
+    ret = fts_read_reg(FTS_REG_GESTURE_EN, &gesture_mode);
+    if (ret < 0) {
+        FTS_ERROR("read reg0xD0 fails");
+        return ret;
+    }
+
+    ret = fts_read_reg(FTS_REG_POWER_MODE, &power_mode);
+    if (ret < 0) {
+        FTS_ERROR("read reg0xA5 fails");
+        return ret;
+    }
+
+    ret = fts_read_reg(FTS_REG_MONITOR_CTRL, &monitor_ctrl);
+    if (ret < 0) {
+        FTS_ERROR("read reg0x86 fails");
+        return ret;
+    }
+
+    if (gesture_mode) {
+        if (power_mode == 0)
+            cnt += snprintf(tmpbuf + cnt,  PROC_BUF_SIZE - cnt,
+                "touch_mode:%d-%s\n", MODE_LOW_POWER_ACTIVE, "Low Power Active");
+        else if (power_mode == 1)
+            cnt += snprintf(tmpbuf + cnt,  PROC_BUF_SIZE - cnt,
+                "touch_mode:%d-%s\n", MODE_LOW_POWER_IDLE, "Low Power Idle");
+    } else if (monitor_ctrl) {
+        cnt += snprintf(tmpbuf + cnt,  PROC_BUF_SIZE - cnt,
+            "touch_mode:%d-%s\n", MODE_AUTO, "Auto mode");
+    } else {
+        if (power_mode == 0)
+            cnt += snprintf(tmpbuf + cnt,  PROC_BUF_SIZE - cnt,
+                "touch_mode:%d-%s\n", MODE_NORMAL_ACTIVE, "Normal Active");
+        else if (power_mode == 1)
+            cnt += snprintf(tmpbuf + cnt,  PROC_BUF_SIZE - cnt,
+                "touch_mode:%d-%s\n", MODE_NORMAL_IDLE, "Normal Idle");
+    }
+
+    if (copy_to_user(buff, tmpbuf, cnt)) {
+        FTS_ERROR("copy to user error");
+        return -EFAULT;
+    }
+
+    *ppos = pos + cnt;
+    return cnt;
+}
+
+static ssize_t proc_touch_mode_write(struct file *filp, const char __user *buff,
+    size_t count, loff_t *ppos)
+{
+    int ret = 0;
+    char tmpbuf[PROC_BUF_SIZE] = { 0 };
+    int touch_mode = 0xFF;
+    int buflen = count;
+
+    if (buflen >= PROC_BUF_SIZE) {
+        FTS_ERROR("proc write length(%d) fails", buflen);
+        return -EINVAL;
+    }
+
+    if (copy_from_user(tmpbuf, buff, buflen)) {
+        FTS_ERROR("copy from user error");
+        return -EFAULT;
+    }
+
+    ret = sscanf(tmpbuf, "%d", &touch_mode);
+    if ((ret != 1) || (touch_mode < 0) || (touch_mode >= MODE_CNT)) {
+        FTS_ERROR("get mode(%d) fails,ret=%d", touch_mode, ret);
+        return -EINVAL;
+    }
+
+    FTS_INFO("switch touch_mode to %d", touch_mode);
+    switch (touch_mode) {
+    case MODE_AUTO:
+        ret = fts_write_reg(FTS_REG_MONITOR_CTRL, 1);
+        if (ret < 0) {
+            FTS_ERROR("write reg0x86 fails");
+            return ret;
+        }
+
+        ret = fts_write_reg(FTS_REG_GESTURE_EN, 0);
+        if (ret < 0) {
+            FTS_ERROR("write reg0xd0 fails");
+            return ret;
+        }
+        break;
+    case MODE_NORMAL_ACTIVE:
+        ret = fts_write_reg(FTS_REG_MONITOR_CTRL, 0);
+        if (ret < 0) {
+            FTS_ERROR("write reg0x86 fails");
+            return ret;
+        }
+
+        ret = fts_write_reg(FTS_REG_POWER_MODE, 0);
+        if (ret < 0) {
+            FTS_ERROR("write reg0xA5 fails");
+            return ret;
+        }
+
+        ret = fts_write_reg(FTS_REG_GESTURE_EN, 0);
+        if (ret < 0) {
+            FTS_ERROR("write reg0xD0 fails");
+            return ret;
+        }
+        break;
+    case MODE_NORMAL_IDLE:
+        ret = fts_write_reg(FTS_REG_MONITOR_CTRL, 0);
+        if (ret < 0) {
+            FTS_ERROR("write reg0x86 fails");
+            return ret;
+        }
+
+        ret = fts_write_reg(FTS_REG_POWER_MODE, 1);
+        if (ret < 0) {
+            FTS_ERROR("write reg0xA5 fails");
+            return ret;
+        }
+
+        ret = fts_write_reg(FTS_REG_GESTURE_EN, 0);
+        if (ret < 0) {
+            FTS_ERROR("write reg0xD0 fails");
+            return ret;
+        }
+        break;
+    case MODE_LOW_POWER_ACTIVE:
+        ret = fts_write_reg(FTS_REG_GESTURE_EN, 1);
+        if (ret < 0) {
+            FTS_ERROR("write reg0xD0 fails");
+            return ret;
+        }
+
+        ret = fts_write_reg(FTS_REG_POWER_MODE, 0);
+        if (ret < 0) {
+            FTS_ERROR("write reg0xA5 fails");
+            return ret;
+        }
+        break;
+    case MODE_LOW_POWER_IDLE:
+        ret = fts_write_reg(FTS_REG_GESTURE_EN, 1);
+        if (ret < 0) {
+            FTS_ERROR("write reg0xD0 fails");
+            return ret;
+        }
+
+        ret = fts_write_reg(FTS_REG_POWER_MODE, 1);
+        if (ret < 0) {
+            FTS_ERROR("write reg0xA5 fails");
+            return ret;
+        }
+        break;
+    default:
+        FTS_ERROR("Input index of mode is out of range!");
+        break;
+    }
+
+    return count;
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_touch_mode_fops = {
+    .proc_read   = proc_touch_mode_read,
+    .proc_write  = proc_touch_mode_write,
+};
+#else
+static const struct file_operations proc_touch_mode_fops = {
+    .owner  = THIS_MODULE,
+    .read   = proc_touch_mode_read,
+    .write  = proc_touch_mode_write,
+};
+#endif
+
+struct proc_dir_entry *proc_fw_update;
+struct proc_dir_entry *proc_scan_modes;
+struct proc_dir_entry *proc_touch_mode;
+
+#define MODE_OWNER_WRITE        0200
+#define MODE_OWNER_READ         0400
+#define MODE_OWNER_READ_WRITE   0600
+static int fts_create_ctrl_procs(struct fts_ts_data *ts_data)
+{
+    int ret = 0;
+
+    proc_fw_update = proc_create_data("fw_update", MODE_OWNER_WRITE,
+        ts_data->proc_touch_entry, &proc_fw_update_fops, ts_data);
+    if (!proc_fw_update) {
+        FTS_ERROR("create proc_fw_update entry fail");
+        ret = -ENOMEM;
+        return ret;
+    }
+
+    proc_scan_modes = proc_create_data("scan_modes", MODE_OWNER_READ,
+        ts_data->proc_touch_entry, &proc_scan_modes_fops, ts_data);
+    if (!proc_scan_modes) {
+        FTS_ERROR("create proc_scan_modes entry fail");
+        ret = -ENOMEM;
+        return ret;
+    }
+
+    proc_touch_mode = proc_create_data("touch_mode", MODE_OWNER_READ_WRITE,
+        ts_data->proc_touch_entry, &proc_touch_mode_fops, ts_data);
+    if (!proc_touch_mode) {
+        FTS_ERROR("create proc_touch_mode entry fail");
+        ret = -ENOMEM;
+        return ret;
+    }
+
+    FTS_INFO("create test procs succeeds");
+    return 0;
+}
+
+static void fts_free_ctrl_procs(void)
+{
+    if (proc_fw_update)
+        proc_remove(proc_fw_update);
+
+    if (proc_scan_modes)
+        proc_remove(proc_scan_modes);
+
+    if (proc_touch_mode)
+        proc_remove(proc_touch_mode);
+}
+
 int fts_create_sysfs(struct fts_ts_data *ts_data)
 {
     int ret = 0;
@@ -1283,11 +1605,17 @@ int fts_create_sysfs(struct fts_ts_data *ts_data)
         FTS_INFO("[EX]: sysfs_create_group() succeeded!!");
     }
 
+    ret = fts_create_ctrl_procs(ts_data);
+    if (ret) {
+        FTS_ERROR("Create ctrl procs fails");
+    }
+
     return ret;
 }
 
 int fts_remove_sysfs(struct fts_ts_data *ts_data)
 {
     sysfs_remove_group(&ts_data->dev->kobj, &fts_attribute_group);
+    fts_free_ctrl_procs();
     return 0;
 }

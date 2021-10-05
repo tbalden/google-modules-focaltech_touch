@@ -988,7 +988,7 @@ int get_cb_mc_sc(u8 wp, int byte_num, int *cb_buf, enum byte_mode mode)
     /* 1:waterproof 0:non-waterproof */
     ret = fts_test_write_reg(FACTORY_REG_MC_SC_MODE, wp);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("get mc_sc mode fail\n");
+        FTS_TEST_SAVE_ERR("set mc_sc mode fail\n");
         return ret;
     }
 
