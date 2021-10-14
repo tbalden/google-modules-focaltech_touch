@@ -660,9 +660,9 @@ static ssize_t fts_irq_show(
     struct device *dev, struct device_attribute *attr, char *buf)
 {
     ssize_t count = 0;
-    struct irq_desc *desc = irq_to_desc(fts_data->irq);
 
-    count = snprintf(buf, PAGE_SIZE, "irq_depth:%d\n", desc->depth);
+    count = snprintf(buf, PAGE_SIZE, "irq_enable:%d\n",
+        !fts_data->irq_disabled);
 
     return count;
 }
