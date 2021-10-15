@@ -619,15 +619,15 @@ void fts_test_save_data(char *name, int code, int *data, int datacnt,
 #define TXT_SUPPORT             0
 
 #define FTS_TEST_DBG(fmt, args...) do { \
-printk("[FTS_TS][TEST]%s:"fmt"\n",  __func__, ##args); \
+    printk("[FTS_TS/D][TEST]%s:"fmt"\n",  __func__, ##args); \
 } while (0)
 
 #define FTS_TEST_FUNC_ENTER() do { \
-    printk("[FTS_TS][TEST]%s: Enter\n", __func__); \
+    printk("[FTS_TS/D][TEST]%s: Enter\n", __func__); \
 } while (0)
 
 #define FTS_TEST_FUNC_EXIT()  do { \
-    printk("[FTS_TS][TEST]%s: Exit(%d)\n", __func__, __LINE__); \
+    printk("[FTS_TS/D][TEST]%s: Exit(%d)\n", __func__, __LINE__); \
 } while (0)
 
 #define FTS_TEST_INFO(fmt, args...) do { \

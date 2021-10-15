@@ -674,13 +674,13 @@ static int fts_input_pen_report(struct fts_ts_data *data)
 
     if (data->log_level >= 2  ||
         ((1 == data->log_level) && (FTS_TOUCH_DOWN == pevt->flag))) {
-        FTS_DEBUG("[PEN]x:%d,y:%d,p:%d,inrange:%d,tip:%d,flag:%d DOWN",
+        FTS_DEBUG("[PEN]x:%d,y:%d,p:%d,inrange:%d,tip:%d,flag:%d DOWN!",
                   pevt->x, pevt->y, pevt->p, pevt->inrange,
                   pevt->tip, pevt->flag);
     }
 
     if ( (data->log_level >= 1) && (!pevt->inrange)) {
-        FTS_DEBUG("[PEN]UP");
+        FTS_DEBUG("[PEN]UP!");
     }
 
     input_report_abs(pen_dev, ABS_X, pevt->x);
@@ -2083,7 +2083,7 @@ static int fts_ts_probe(struct spi_device *spi)
     fts_data = ts_data;
     ts_data->spi = spi;
     ts_data->dev = &spi->dev;
-    ts_data->log_level = 1;
+    ts_data->log_level = FTS_KEY_LOG_LEVEL;
 
     ts_data->bus_type = BUS_TYPE_SPI_V2;
     spi_set_drvdata(spi, ts_data);

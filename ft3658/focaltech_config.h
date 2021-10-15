@@ -201,6 +201,15 @@
 #define FTS_DEBUG_EN                            1
 
 /*
+ * Log level of touch key info
+ * 0: Do not show key info
+ * 1: Show single key event
+ * 2: Show continuous key event
+ * 3: Show continuous key event and buffer info
+ */
+#define FTS_KEY_LOG_LEVEL                       0
+
+/*
  * Linux MultiTouch Protocol
  * 1: Protocol B(default), 0: Protocol A
  */

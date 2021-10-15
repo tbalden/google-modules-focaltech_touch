@@ -2187,7 +2187,7 @@ static int fts_test_func_init(struct fts_ts_data *ts_data)
     struct test_funcs *func = test_func_list[0];
     int func_count = sizeof(test_func_list) / sizeof(test_func_list[0]);
 
-    FTS_TEST_INFO("init test function");
+    FTS_TEST_FUNC_ENTER();
     if (0 == func_count) {
         FTS_TEST_SAVE_ERR("test functions list is NULL, fail\n");
         return -ENODATA;
@@ -2217,6 +2217,7 @@ static int fts_test_func_init(struct fts_ts_data *ts_data)
     }
 
     fts_ftest->ts_data = ts_data;
+    FTS_TEST_FUNC_EXIT();
     return 0;
 }
 
