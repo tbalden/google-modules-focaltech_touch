@@ -131,6 +131,8 @@ struct fts_ts_platform_data {
     u32 reset_gpio;
     u32 reset_gpio_flags;
     struct pinctrl *pinctrl;
+    struct drm_panel *panel;
+    u32 initial_panel_index;
     bool have_key;
     u32 key_number;
     u32 keys[FTS_MAX_KEYS];

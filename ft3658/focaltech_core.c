@@ -1390,6 +1390,37 @@ static int fts_get_dt_coords(struct device *dev, char *name,
     return 0;
 }
 
+static int fts_check_panel_map(struct device_node *np,
+    struct fts_ts_platform_data *pdata)
+{
+    int ret = 0;
+    int index;
+    struct of_phandle_args panelmap;
+    struct drm_panel *panel = NULL;
+
+    if (of_property_read_bool(np, "focaltech,panel_map")) {
+        for (index = 0 ;; index++) {
+            ret = of_parse_phandle_with_fixed_args(np,
+                    "focaltech,panel_map",
+                    1,
+                    index,
+                    &panelmap);
+            if (ret) {
+                FTS_ERROR("Can't find display panel!\n");
+                return -EPROBE_DEFER;
+            }
+            panel = of_drm_find_panel(panelmap.np);
+            of_node_put(panelmap.np);
+            if (!IS_ERR_OR_NULL(panel)) {
+                pdata->panel = panel;
+                pdata->initial_panel_index = panelmap.args[0];
+                break;
+            }
+        }
+    }
+    return 0;
+}
+
 static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
 {
     int ret = 0;
@@ -1397,6 +1428,11 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
     u32 temp_val = 0;
 
     FTS_FUNC_ENTER();
+
+    /* Check if panel(s) exist or not. */
+    ret = fts_check_panel_map(np, pdata);
+    if (ret)
+        return ret;
 
     ret = fts_get_dt_coords(dev, "focaltech,display-coords", pdata);
     if (ret < 0)
