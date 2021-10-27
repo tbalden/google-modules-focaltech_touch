@@ -734,21 +734,33 @@ static ssize_t fts_tpfwver_show(
     struct fts_ts_data *ts_data = fts_data;
     struct input_dev *input_dev = ts_data->input_dev;
     ssize_t num_read_chars = 0;
-    u8 fwver = 0;
+    u8 fw_major_ver = 0;
+    u8 fw_minor_ver = 0;
 
     mutex_lock(&input_dev->mutex);
 
 #if FTS_ESDCHECK_EN
     fts_esdcheck_proc_busy(1);
 #endif
-    ret = fts_read_reg(FTS_REG_FW_VER, &fwver);
+    ret = fts_read_reg(FTS_REG_FW_MAJOR_VER, &fw_major_ver);
+    if ((ret < 0) || (fw_major_ver == 0xFF) || (fw_major_ver == 0x00)) {
+        num_read_chars = snprintf(buf, PAGE_SIZE,
+                                  "get tp fw major version fail!\n");
+        mutex_unlock(&input_dev->mutex);
+        return num_read_chars;
+    }
+    ret = fts_read_reg(FTS_REG_FW_MINOR_VER, &fw_minor_ver);
+    if (ret < 0) {
+        num_read_chars = snprintf(buf, PAGE_SIZE,
+                                  "get tp fw minor version fail!\n");
+        mutex_unlock(&input_dev->mutex);
+        return num_read_chars;
+    }
 #if FTS_ESDCHECK_EN
     fts_esdcheck_proc_busy(0);
 #endif
-    if ((ret < 0) || (fwver == 0xFF) || (fwver == 0x00))
-        num_read_chars = snprintf(buf, PAGE_SIZE, "get tp fw version fail!\n");
-    else
-        num_read_chars = snprintf(buf, PAGE_SIZE, "%02x\n", fwver);
+    num_read_chars = snprintf(buf, PAGE_SIZE, "V%02x_D%02x\n", fw_major_ver,
+        fw_minor_ver);
 
     mutex_unlock(&input_dev->mutex);
     return num_read_chars;
@@ -1121,8 +1133,11 @@ static ssize_t fts_dumpreg_show(
     fts_read_reg(FTS_REG_POWER_MODE, &val);
     count += snprintf(buf + count, PAGE_SIZE, "Power Mode:0x%02x\n", val);
 
-    fts_read_reg(FTS_REG_FW_VER, &val);
-    count += snprintf(buf + count, PAGE_SIZE, "FW Ver:0x%02x\n", val);
+    fts_read_reg(FTS_REG_FW_MAJOR_VER, &val);
+    count += snprintf(buf + count, PAGE_SIZE, "FW Major Ver:0x%02x\n", val);
+
+    fts_read_reg(FTS_REG_FW_MINOR_VER, &val);
+    count += snprintf(buf + count, PAGE_SIZE, "FW Minor Ver:0x%02x\n", val);
 
     fts_read_reg(FTS_REG_LIC_VER, &val);
     count += snprintf(buf + count, PAGE_SIZE, "LCD Initcode Ver:0x%02x\n", val);

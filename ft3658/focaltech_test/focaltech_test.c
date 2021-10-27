@@ -1254,7 +1254,8 @@ static int fts_test_malloc_free_data_txt(struct fts_test *tdata, bool allocate)
         }
 
         tdata->testresult_len = 0;
-        FTS_TEST_SAVE_INFO("FW version:0x%02x\n", tdata->fw_ver);
+        FTS_TEST_SAVE_INFO("FW version:V%02x_D%02x\n", tdata->fw_major_ver,
+            tdata->fw_minor_verver);
         FTS_TEST_SAVE_INFO("tx_num:%d, rx_num:%d, key_num:%d\n",
                            tdata->node.tx_num, tdata->node.rx_num,
                            tdata->node.key_num);
@@ -1920,8 +1921,19 @@ static int fts_test_init_basicinfo(struct fts_test *tdata)
         return -EINVAL;
     }
 
-    fts_test_read_reg(REG_FW_VERSION, &val);
-    tdata->fw_ver = val;
+    fts_test_read_reg(REG_FW_MAJOR_VER, &val);
+    if (ret < 0) {
+        FTS_ERROR("read fw major version fail,ret=%d\n", ret);
+        return ret;
+    }
+    tdata->fw_major_ver = val;
+
+    fts_test_read_reg(REG_FW_MINOR_VER, &val);
+    if (ret < 0) {
+        FTS_ERROR("read fw minor version fail,ret=%d\n", ret);
+        return ret;
+    }
+    tdata->fw_minor_ver = val;
 
     if (IC_HW_INCELL == tdata->func->hwtype) {
         fts_test_read_reg(REG_VA_TOUCH_THR, &val);
@@ -2303,15 +2315,22 @@ static const struct file_operations proc_run_os_test_fops = {
 static int proc_test_fwver_show(struct seq_file *s, void *v)
 {
     int ret = 0;
-    u8 fwver = 0;
+    u8 fw_major_ver = 0;
+    u8 fw_minor_ver = 0;
 
-    ret = fts_read_reg(REG_FW_VERSION, &fwver);
+    ret = fts_read_reg(REG_FW_MAJOR_VER, &fw_major_ver);
     if (ret < 0) {
-        FTS_ERROR("FWVER read fail,ret=%d\n", ret);
+        FTS_ERROR("FWVER read major version fail,ret=%d\n", ret);
         return ret;
     }
 
-    seq_printf(s, "FWVER:0x%02X\n", fwver);
+    ret = fts_read_reg(REG_FW_MINOR_VER, &fw_minor_ver);
+    if (ret < 0) {
+        FTS_ERROR("FWVER read minor version fail,ret=%d\n", ret);
+        return ret;
+    }
+
+    seq_printf(s, "FWVER:V%02x_D%02x\n", fw_major_ver, fw_minor_ver);
     return 0;
 }
 
