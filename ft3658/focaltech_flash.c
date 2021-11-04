@@ -1978,7 +1978,13 @@ static void fts_fwupg_work(struct work_struct *work)
         /* ic init if have */
         fts_fwupg_init_ic_detail(upg);
         /* run auto upgrade */
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+        fts_ts_set_bus_ref(upg->ts_data, FTS_TS_BUS_REF_FW_UPDATE, true);
+#endif
         fts_fwupg_auto_upgrade(upg);
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+        fts_ts_set_bus_ref(upg->ts_data, FTS_TS_BUS_REF_FW_UPDATE, false);
+#endif
     }
 
 #if FTS_ESDCHECK_EN

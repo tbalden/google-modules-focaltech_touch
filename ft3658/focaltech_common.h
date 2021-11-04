@@ -32,6 +32,14 @@
 #define __LINUX_FOCALTECH_COMMON_H__
 
 #include "focaltech_config.h"
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+#include <drm/drm_bridge.h>
+#include <drm/drm_device.h>
+#include <drm/drm_encoder.h>
+#include <drm/drm_modes.h>
+#include <drm/drm_panel.h>
+#include <samsung/exynos_drm_connector.h>
+#endif
 
 /*****************************************************************************
 * Macro definitions using #define
@@ -146,6 +154,19 @@ struct ts_ic_info {
     struct ft_chip_t ids;
     struct ft_chip_id_t cid;
 };
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+enum {
+    FTS_TS_BUS_REF_SCREEN_ON    = 0x01,
+    FTS_TS_BUS_REF_IRQ          = 0x02,
+    FTS_TS_BUS_REF_FW_UPDATE    = 0x04,
+};
+
+enum TOUCH_POWER_MODE {
+    FTS_TS_STATE_POWER_ON = 0,
+    FTS_TS_STATE_SUSPEND,
+};
+#endif
 
 /*****************************************************************************
 * DEBUG function define here

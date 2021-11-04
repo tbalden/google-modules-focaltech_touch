@@ -68,6 +68,10 @@ struct fts_ts_data *fts_data;
 /*****************************************************************************
 * Static function prototypes
 *****************************************************************************/
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+static int register_panel_bridge(struct fts_ts_data *ts);
+static void unregister_panel_bridge(struct drm_bridge *bridge);
+#endif
 
 static int fts_ts_suspend(struct device *dev);
 static int fts_ts_resume(struct device *dev);
@@ -836,9 +840,192 @@ static void fts_irq_read_report(void)
 #endif
 }
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+static void fts_ts_aggregate_bus_state(struct fts_ts_data *ts)
+{
+    /* Complete or cancel any outstanding transitions */
+    cancel_work_sync(&ts->suspend_work);
+    cancel_work_sync(&ts->resume_work);
+
+    if ((ts->bus_refmask == 0 &&
+        ts->power_status == FTS_TS_STATE_SUSPEND) ||
+        (ts->bus_refmask != 0 &&
+        ts->power_status != FTS_TS_STATE_SUSPEND))
+        return;
+
+    if (ts->bus_refmask == 0)
+        queue_work(ts->ts_workqueue, &ts->suspend_work);
+    else
+        queue_work(ts->ts_workqueue, &ts->resume_work);
+}
+
+int fts_ts_set_bus_ref(struct fts_ts_data *ts, u16 ref, bool enable)
+{
+    int result = 0;
+
+    mutex_lock(&ts->bus_mutex);
+
+    if ((enable && (ts->bus_refmask & ref)) ||
+        (!enable && !(ts->bus_refmask & ref))) {
+        mutex_unlock(&ts->bus_mutex);
+        return -EINVAL;
+    }
+
+    if (enable) {
+        /* IRQs can only keep the bus active. IRQs received while the
+         * bus is transferred to AOC should be ignored.
+         */
+        if (ref == FTS_TS_BUS_REF_IRQ && ts->bus_refmask == 0)
+            result = -EAGAIN;
+        else
+            ts->bus_refmask |= ref;
+    } else
+        ts->bus_refmask &= ~ref;
+    fts_ts_aggregate_bus_state(ts);
+
+    mutex_unlock(&ts->bus_mutex);
+
+    /* When triggering a wake, wait up to one second to resume. SCREEN_ON
+     * and IRQ references do not need to wait.
+     */
+    if (enable &&
+        ref != FTS_TS_BUS_REF_SCREEN_ON && ref != FTS_TS_BUS_REF_IRQ) {
+        wait_for_completion_timeout(&ts->bus_resumed, HZ);
+        if (ts->power_status != FTS_TS_STATE_POWER_ON) {
+            FTS_ERROR("Failed to wake the touch bus.\n");
+            result = -ETIMEDOUT;
+        }
+    }
+
+    return result;
+}
+
+struct drm_connector *get_bridge_connector(struct drm_bridge *bridge)
+{
+    struct drm_connector *connector;
+    struct drm_connector_list_iter conn_iter;
+
+    drm_connector_list_iter_begin(bridge->dev, &conn_iter);
+    drm_for_each_connector_iter(connector, &conn_iter) {
+        if (connector->encoder == bridge->encoder)
+            break;
+    }
+    drm_connector_list_iter_end(&conn_iter);
+    return connector;
+}
+
+static bool bridge_is_lp_mode(struct drm_connector *connector)
+{
+    if (connector && connector->state) {
+        struct exynos_drm_connector_state *s =
+            to_exynos_connector_state(connector->state);
+        return s->exynos_mode.is_lp_mode;
+    }
+    return false;
+}
+
+static void panel_bridge_enable(struct drm_bridge *bridge)
+{
+    struct fts_ts_data *ts =
+        container_of(bridge, struct fts_ts_data, panel_bridge);
+
+    if (!ts->is_panel_lp_mode)
+        fts_ts_set_bus_ref(ts, FTS_TS_BUS_REF_SCREEN_ON, true);
+}
+
+static void panel_bridge_disable(struct drm_bridge *bridge)
+{
+    struct fts_ts_data *ts =
+        container_of(bridge, struct fts_ts_data, panel_bridge);
+
+    if (bridge->encoder && bridge->encoder->crtc) {
+        const struct drm_crtc_state *crtc_state = bridge->encoder->crtc->state;
+
+        if (drm_atomic_crtc_effectively_active(crtc_state))
+            return;
+    }
+
+    fts_ts_set_bus_ref(ts, FTS_TS_BUS_REF_SCREEN_ON, false);
+}
+
+static void panel_bridge_mode_set(struct drm_bridge *bridge,
+    const struct drm_display_mode *mode,
+    const struct drm_display_mode *adjusted_mode)
+{
+    struct fts_ts_data *ts =
+        container_of(bridge, struct fts_ts_data, panel_bridge);
+
+    if (!ts->connector || !ts->connector->state)
+        ts->connector = get_bridge_connector(bridge);
+
+    ts->is_panel_lp_mode = bridge_is_lp_mode(ts->connector);
+    fts_ts_set_bus_ref(ts, FTS_TS_BUS_REF_SCREEN_ON, !ts->is_panel_lp_mode);
+
+    if (adjusted_mode) {
+        int vrefresh = drm_mode_vrefresh(adjusted_mode);
+
+        if (ts->display_refresh_rate != vrefresh) {
+            FTS_INFO("refresh rate(Hz) changed to %d from %d\n",
+                vrefresh, ts->display_refresh_rate);
+            ts->display_refresh_rate = vrefresh;
+        }
+    }
+}
+
+static const struct drm_bridge_funcs panel_bridge_funcs = {
+    .enable = panel_bridge_enable,
+    .disable = panel_bridge_disable,
+    .mode_set = panel_bridge_mode_set,
+};
+
+static int register_panel_bridge(struct fts_ts_data *ts)
+{
+    FTS_FUNC_ENTER();
+#ifdef CONFIG_OF
+    ts->panel_bridge.of_node = ts->spi->dev.of_node;
+#endif
+    ts->panel_bridge.funcs = &panel_bridge_funcs;
+    drm_bridge_add(&ts->panel_bridge);
+    FTS_FUNC_EXIT();
+    return 0;
+}
+
+static void unregister_panel_bridge(struct drm_bridge *bridge)
+{
+    struct drm_bridge *node;
+
+    FTS_FUNC_ENTER();
+    drm_bridge_remove(bridge);
+
+    if (!bridge->dev) /* not attached */
+        return;
+
+    drm_modeset_lock(&bridge->dev->mode_config.connection_mutex, NULL);
+    list_for_each_entry(node, &bridge->encoder->bridge_chain, chain_node)
+        if (node == bridge) {
+            if (bridge->funcs->detach)
+                bridge->funcs->detach(bridge);
+            list_del(&bridge->chain_node);
+            break;
+        }
+    drm_modeset_unlock(&bridge->dev->mode_config.connection_mutex);
+    bridge->dev = NULL;
+    FTS_FUNC_EXIT();
+}
+#endif
+
 extern int int_test_has_interrupt;
 static irqreturn_t fts_irq_handler(int irq, void *data)
 {
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+    struct fts_ts_data *ts_data = fts_data;;
+    if (fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_IRQ, true) < 0) {
+        /* Interrupt during bus suspend */
+        FTS_INFO("Skipping stray interrupt since bus is suspended(power_status: %d)\n",
+            ts_data->power_status);
+        return IRQ_HANDLED;
+    }
+#endif
 #if defined(CONFIG_PM) && FTS_PATCH_COMERR_PM
     int ret = 0;
     struct fts_ts_data *ts_data = fts_data;
@@ -855,6 +1042,9 @@ static irqreturn_t fts_irq_handler(int irq, void *data)
 #endif
     int_test_has_interrupt++;
     fts_irq_read_report();
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_IRQ, false);
+#endif
     return IRQ_HANDLED;
 }
 
@@ -1511,9 +1701,18 @@ static void fts_suspend_work(struct work_struct *work)
     mutex_lock(&ts_data->device_mutex);
 
     reinit_completion(&ts_data->bus_resumed);
-
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+    if (ts_data->power_status == FTS_TS_STATE_SUSPEND) {
+        FTS_ERROR("Already suspended.\n");
+        mutex_unlock(&ts_data->device_mutex);
+        return;
+    }
+#endif
     fts_ts_suspend(ts_data->dev);
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+    ts_data->power_status = FTS_TS_STATE_SUSPEND;
+#endif
     mutex_unlock(&ts_data->device_mutex);
 }
 
@@ -1525,7 +1724,17 @@ static void fts_resume_work(struct work_struct *work)
     FTS_DEBUG("Entry");
     mutex_lock(&ts_data->device_mutex);
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+    if (ts_data->power_status == FTS_TS_STATE_POWER_ON) {
+        FTS_ERROR("Already resumed.\n");
+        mutex_unlock(&ts_data->device_mutex);
+        return;
+    }
+#endif
     fts_ts_resume(ts_data->dev);
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+    ts_data->power_status = FTS_TS_STATE_POWER_ON;
+#endif
     complete_all(&ts_data->bus_resumed);
 
     mutex_unlock(&ts_data->device_mutex);
@@ -1760,6 +1969,11 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     mutex_init(&ts_data->report_mutex);
     mutex_init(&ts_data->bus_lock);
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+    ts_data->power_status = FTS_TS_STATE_POWER_ON;
+    ts_data->bus_refmask = FTS_TS_BUS_REF_SCREEN_ON;
+    mutex_init(&ts_data->bus_mutex);
+#endif
     mutex_init(&ts_data->device_mutex);
     init_completion(&ts_data->bus_resumed);
     complete_all(&ts_data->bus_resumed);
@@ -1858,6 +2072,13 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         FTS_ERROR("request irq failed");
         goto err_irq_req;
     }
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+    ret = register_panel_bridge(ts_data);
+    if (ret < 0) {
+        FTS_ERROR("register_panel_bridge failed. ret = 0x%08X\n", ret);
+    }
+#endif
 
     if (ts_data->ts_workqueue) {
         INIT_WORK(&ts_data->resume_work, fts_resume_work);
@@ -1966,6 +2187,10 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 
     cancel_work_sync(&ts_data->suspend_work);
     cancel_work_sync(&ts_data->resume_work);
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+    unregister_panel_bridge(&ts_data->panel_bridge);
+#endif
+
     if (ts_data->ts_workqueue)
         destroy_workqueue(ts_data->ts_workqueue);
 

@@ -231,6 +231,15 @@ struct fts_ts_data {
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
     struct early_suspend early_suspend;
 #endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+    volatile int power_status;
+    u16 bus_refmask;
+    struct mutex bus_mutex;
+    struct drm_bridge panel_bridge;
+    struct drm_connector *connector;
+    bool is_panel_lp_mode;
+    int display_refresh_rate;
+#endif
 };
 
 enum FTS_BUS_TYPE {
@@ -322,4 +331,10 @@ int fts_ex_mode_recovery(struct fts_ts_data *ts_data);
 
 void fts_irq_disable(void);
 void fts_irq_enable(void);
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
+/* Bus reference tracking */
+int fts_ts_set_bus_ref(struct fts_ts_data *ts, u16 ref, bool enable);
+#endif
+
 #endif /* __LINUX_FOCALTECH_CORE_H__ */
