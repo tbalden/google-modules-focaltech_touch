@@ -68,10 +68,9 @@ struct fts_ts_data *fts_data;
 /*****************************************************************************
 * Static function prototypes
 *****************************************************************************/
-#ifdef FTS_DRM_BRIDGE
+
 static int fts_ts_suspend(struct device *dev);
 static int fts_ts_resume(struct device *dev);
-#endif
 
 int fts_check_cid(struct fts_ts_data *ts_data, u8 id_h)
 {
@@ -148,6 +147,7 @@ int fts_reset_proc(int hdelayms)
 {
     FTS_DEBUG("tp reset");
     gpio_direction_output(fts_data->pdata->reset_gpio, 0);
+    /* The minimum reset duration is 1 ms. */
     msleep(1);
     gpio_direction_output(fts_data->pdata->reset_gpio, 1);
     if (hdelayms) {
@@ -253,7 +253,6 @@ static int fts_match_cid(struct fts_ts_data *ts_data,
     return -EINVAL;
 #endif
 }
-
 
 static int fts_get_chip_types(
     struct fts_ts_data *ts_data,
@@ -369,7 +368,6 @@ static int fts_get_ic_information(struct fts_ts_data *ts_data)
         if (ts_data->ic_info.hid_supported) {
             fts_hid2std();
         }
-
 
         ret = fts_read_bootid(ts_data, &chip_id[0]);
         if (ret <  0) {
@@ -770,7 +768,7 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
     }
 
     if (data->point_num > max_touch_num) {
-        FTS_INFO("invalid point_num(%d)", data->point_num);
+        FTS_DEBUG("invalid point_num(%d)", data->point_num);
         data->point_num = 0;
         return -EIO;
     }
@@ -1124,8 +1122,6 @@ static int fts_power_source_ctrl(struct fts_ts_data *ts_data, int enable)
     if (enable) {
         if (ts_data->power_disabled) {
             FTS_DEBUG("regulator enable !");
-            gpio_direction_output(ts_data->pdata->reset_gpio, 0);
-            msleep(1);
             ret = regulator_enable(ts_data->avdd);
             if (ret) {
                 FTS_ERROR("enable avdd regulator failed,ret=%d", ret);
@@ -1137,12 +1133,16 @@ static int fts_power_source_ctrl(struct fts_ts_data *ts_data, int enable)
                     FTS_ERROR("enable dvdd regulator failed,ret=%d", ret);
                 }
             }
+            /* sleep 1 ms to power on avdd/dvdd to match spec. */
+            msleep(1);
+            gpio_direction_output(ts_data->pdata->reset_gpio, 1);
             ts_data->power_disabled = false;
         }
     } else {
         if (!ts_data->power_disabled) {
             FTS_DEBUG("regulator disable !");
             gpio_direction_output(ts_data->pdata->reset_gpio, 0);
+            /* sleep 1 ms to power off avdd/dvdd to match spec. */
             msleep(1);
             ret = regulator_disable(ts_data->avdd);
             if (ret) {
@@ -1162,27 +1162,26 @@ static int fts_power_source_ctrl(struct fts_ts_data *ts_data, int enable)
     return ret;
 }
 
-
 int fts_pinctrl_configure(struct fts_ts_data *ts, bool enable)
 {
-	struct pinctrl_state *state;
+    struct pinctrl_state *state;
 
-	FTS_INFO("%s: %s\n", __func__, enable ? "ACTIVE" : "SUSPEND");
+    FTS_DEBUG("%s\n", enable ? "ACTIVE" : "SUSPEND");
 
-	if (enable) {
-		state = pinctrl_lookup_state(ts->pdata->pinctrl, "ts_active");
-		if (IS_ERR(ts->pdata->pinctrl))
-			FTS_ERROR("%s: could not get active pinstate\n", __func__);
-	} else {
-		state = pinctrl_lookup_state(ts->pdata->pinctrl, "ts_suspend");
-		if (IS_ERR(ts->pdata->pinctrl))
-			FTS_ERROR("%s: could not get suspend pinstate\n", __func__);
-	}
+    if (enable) {
+        state = pinctrl_lookup_state(ts->pdata->pinctrl, "ts_active");
+        if (IS_ERR(ts->pdata->pinctrl))
+            FTS_ERROR("Could not get active pinstate\n");
+    } else {
+        state = pinctrl_lookup_state(ts->pdata->pinctrl, "ts_suspend");
+        if (IS_ERR(ts->pdata->pinctrl))
+            FTS_ERROR("Could not get suspend pinstate\n");
+    }
 
-	if (!IS_ERR_OR_NULL(state))
-		return pinctrl_select_state(ts->pdata->pinctrl, state);
+    if (!IS_ERR_OR_NULL(state))
+        return pinctrl_select_state(ts->pdata->pinctrl, state);
 
-	return 0;
+    return 0;
 }
 
 /*****************************************************************************
@@ -1219,10 +1218,15 @@ static int fts_power_source_init(struct fts_ts_data *ts_data)
             ret = PTR_ERR(ts_data->dvdd);
             ts_data->dvdd = NULL;
             FTS_ERROR("get dvdd regulator failed,ret=%d", ret);
-            return ret;
         }
     } else {
         FTS_ERROR("vdd-supply not found!");
+    }
+
+    ts_data->power_disabled = true;
+    ret = fts_power_source_ctrl(ts_data, ENABLE);
+    if (ret) {
+        FTS_ERROR("fail to enable power(regulator)");
     }
 
     ts_data->pdata->pinctrl = devm_pinctrl_get(&ts_data->spi->dev);
@@ -1232,12 +1236,6 @@ static int fts_power_source_init(struct fts_ts_data *ts_data)
     fts_pinctrl_init(ts_data);
     fts_pinctrl_select_normal(ts_data);
 #endif
-
-    ts_data->power_disabled = true;
-    ret = fts_power_source_ctrl(ts_data, ENABLE);
-    if (ret) {
-        FTS_ERROR("fail to enable power(regulator)");
-    }
 
     FTS_FUNC_EXIT();
     return ret;
@@ -1265,7 +1263,6 @@ static int fts_power_source_exit(struct fts_ts_data *ts_data)
     return 0;
 }
 
-#ifdef FTS_DRM_BRIDGE
 static int fts_power_source_suspend(struct fts_ts_data *ts_data)
 {
     int ret = 0;
@@ -1285,19 +1282,19 @@ static int fts_power_source_suspend(struct fts_ts_data *ts_data)
 static int fts_power_source_resume(struct fts_ts_data *ts_data)
 {
     int ret = 0;
-    fts_pinctrl_configure(ts_data, true);
-#if FTS_PINCTRL_EN
-    fts_pinctrl_select_normal(ts_data);
-#endif
 
     ret = fts_power_source_ctrl(ts_data, ENABLE);
     if (ret < 0) {
         FTS_ERROR("power on fail, ret=%d", ret);
     }
 
+    fts_pinctrl_configure(ts_data, true);
+#if FTS_PINCTRL_EN
+    fts_pinctrl_select_normal(ts_data);
+#endif
+
     return ret;
 }
-#endif
 #endif /* FTS_POWER_SOURCE_CUST_EN */
 
 static int fts_gpio_configure(struct fts_ts_data *data)
@@ -1328,7 +1325,7 @@ static int fts_gpio_configure(struct fts_ts_data *data)
             goto err_irq_gpio_dir;
         }
 
-        ret = gpio_direction_output(data->pdata->reset_gpio, 1);
+        ret = gpio_direction_output(data->pdata->reset_gpio, 0);
         if (ret) {
             FTS_ERROR("[GPIO]set_direction for reset gpio failed");
             goto err_reset_gpio_dir;
@@ -1504,13 +1501,34 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
     return 0;
 }
 
+static void fts_suspend_work(struct work_struct *work)
+{
+    struct fts_ts_data *ts_data = container_of(work, struct fts_ts_data,
+        suspend_work);
+
+    FTS_DEBUG("Entry");
+
+    mutex_lock(&ts_data->device_mutex);
+
+    reinit_completion(&ts_data->bus_resumed);
+
+    fts_ts_suspend(ts_data->dev);
+
+    mutex_unlock(&ts_data->device_mutex);
+}
+
 static void fts_resume_work(struct work_struct *work)
 {
-#ifdef FTS_DRM_BRIDGE
     struct fts_ts_data *ts_data = container_of(work, struct fts_ts_data,
                                   resume_work);
+
+    FTS_DEBUG("Entry");
+    mutex_lock(&ts_data->device_mutex);
+
     fts_ts_resume(ts_data->dev);
-#endif
+    complete_all(&ts_data->bus_resumed);
+
+    mutex_unlock(&ts_data->device_mutex);
 }
 
 #if defined(CONFIG_FB)
@@ -1742,6 +1760,10 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     mutex_init(&ts_data->report_mutex);
     mutex_init(&ts_data->bus_lock);
 
+    mutex_init(&ts_data->device_mutex);
+    init_completion(&ts_data->bus_resumed);
+    complete_all(&ts_data->bus_resumed);
+
     /* Init communication interface */
     ret = fts_bus_init(ts_data);
     if (ret) {
@@ -1837,13 +1859,14 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         goto err_irq_req;
     }
 
+    if (ts_data->ts_workqueue) {
+        INIT_WORK(&ts_data->resume_work, fts_resume_work);
+        INIT_WORK(&ts_data->suspend_work, fts_suspend_work);
+    }
+
     ret = fts_fwupg_init(ts_data);
     if (ret) {
         FTS_ERROR("init fw upgrade fail");
-    }
-
-    if (ts_data->ts_workqueue) {
-        INIT_WORK(&ts_data->resume_work, fts_resume_work);
     }
 
 #if defined(CONFIG_PM) && FTS_PATCH_COMERR_PM
@@ -1941,6 +1964,8 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
     input_unregister_device(ts_data->pen_dev);
 #endif
 
+    cancel_work_sync(&ts_data->suspend_work);
+    cancel_work_sync(&ts_data->resume_work);
     if (ts_data->ts_workqueue)
         destroy_workqueue(ts_data->ts_workqueue);
 
@@ -1980,7 +2005,6 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
     return 0;
 }
 
-#ifdef FTS_DRM_BRIDGE
 static int fts_ts_suspend(struct device *dev)
 {
     int ret = 0;
@@ -2063,7 +2087,6 @@ static int fts_ts_resume(struct device *dev)
     FTS_FUNC_EXIT();
     return 0;
 }
-#endif
 
 #if defined(CONFIG_PM) && FTS_PATCH_COMERR_PM
 static int fts_pm_suspend(struct device *dev)
