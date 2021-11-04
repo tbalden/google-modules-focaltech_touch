@@ -92,6 +92,7 @@
 #define FTS_REG_IDE_PARA_STATUS             0xB6
 #define FTS_REG_GLOVE_MODE_EN               0xC0
 #define FTS_REG_COVER_MODE_EN               0xC1
+#define FTS_REG_PALM_EN                     0xC5
 #define FTS_REG_CHARGER_MODE_EN             0x8B
 #define FTS_REG_GESTURE_EN                  0xD0
 #define FTS_REG_GESTURE_OUTPUT_ADDRESS      0xD3
