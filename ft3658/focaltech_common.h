@@ -40,6 +40,9 @@
 #include <drm/drm_panel.h>
 #include <samsung/exynos_drm_connector.h>
 #endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
+#include <touch_bus_negotiator.h>
+#endif
 
 /*****************************************************************************
 * Macro definitions using #define

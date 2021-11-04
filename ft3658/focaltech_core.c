@@ -1713,6 +1713,10 @@ static void fts_suspend_work(struct work_struct *work)
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
     ts_data->power_status = FTS_TS_STATE_SUSPEND;
 #endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
+    if (ts_data->tbn_register_mask)
+        tbn_release_bus(ts_data->tbn_register_mask);
+#endif
     mutex_unlock(&ts_data->device_mutex);
 }
 
@@ -1724,6 +1728,10 @@ static void fts_resume_work(struct work_struct *work)
     FTS_DEBUG("Entry");
     mutex_lock(&ts_data->device_mutex);
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
+    if (ts_data->tbn_register_mask)
+        tbn_request_bus(ts_data->tbn_register_mask);
+#endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
     if (ts_data->power_status == FTS_TS_STATE_POWER_ON) {
         FTS_ERROR("Already resumed.\n");
@@ -1978,6 +1986,15 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     init_completion(&ts_data->bus_resumed);
     complete_all(&ts_data->bus_resumed);
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
+    if (register_tbn(&ts_data->tbn_register_mask)) {
+        ret = -ENODEV;
+        FTS_ERROR("Failed to register tbn context.\n");
+        goto err_init_tbn;
+    }
+    FTS_INFO("tbn_register_mask = %#x.\n", ts_data->tbn_register_mask);
+#endif
+
     /* Init communication interface */
     ret = fts_bus_init(ts_data);
     if (ret) {
@@ -2146,6 +2163,11 @@ err_input_init:
     if (ts_data->ts_workqueue)
         destroy_workqueue(ts_data->ts_workqueue);
 err_bus_init:
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
+    if (ts_data->tbn_register_mask)
+        unregister_tbn(&ts_data->tbn_register_mask);
+err_init_tbn:
+#endif
     kfree_safe(ts_data->bus_tx_buf);
     kfree_safe(ts_data->bus_rx_buf);
     kfree_safe(ts_data->pdata);
@@ -2187,6 +2209,10 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 
     cancel_work_sync(&ts_data->suspend_work);
     cancel_work_sync(&ts_data->resume_work);
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
+    if (ts_data->tbn_register_mask)
+        unregister_tbn(&ts_data->tbn_register_mask);
+#endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
     unregister_panel_bridge(&ts_data->panel_bridge);
 #endif

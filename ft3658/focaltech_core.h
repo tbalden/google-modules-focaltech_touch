@@ -240,6 +240,9 @@ struct fts_ts_data {
     bool is_panel_lp_mode;
     int display_refresh_rate;
 #endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
+    u32 tbn_register_mask;
+#endif
 };
 
 enum FTS_BUS_TYPE {
