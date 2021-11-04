@@ -1853,6 +1853,84 @@ static const struct file_operations proc_grip_fops = {
 };
 #endif
 
+/* sense on and off */
+static ssize_t proc_sense_onoff_read(struct file *filp, char __user *buff,
+    size_t count, loff_t *ppos)
+{
+    int cnt = 0;
+    int ret = 0;
+    char tmpbuf[PROC_BUF_SIZE] = { 0 };
+    u8 mode = 0;
+    loff_t pos = *ppos;
+
+    if (pos)
+        return 0;
+
+    ret = fts_read_reg(FTS_REG_SENSE_ONOFF, &mode);
+    if (ret < 0) {
+        FTS_ERROR("read reg0xEA fails");
+        return ret;
+    }
+
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "Sensing mode:%s\n",
+        mode ? "Enable" : "Disable");
+
+    if (copy_to_user(buff, tmpbuf, cnt)) {
+        FTS_ERROR("copy to user error");
+        return -EFAULT;
+    }
+
+    *ppos = pos + cnt;
+    return cnt;
+}
+
+static ssize_t proc_sense_onoff_write(struct file *filp,
+    const char __user *buff, size_t count, loff_t *ppos)
+{
+    int ret = 0;
+    char tmpbuf[PROC_BUF_SIZE] = { 0 };
+    int mode = 0xFF;
+    int buflen = count;
+
+    if (buflen >= PROC_BUF_SIZE) {
+        FTS_ERROR("proc write length(%d) fails", buflen);
+        return -EINVAL;
+    }
+
+    if (copy_from_user(tmpbuf, buff, buflen)) {
+        FTS_ERROR("copy from user error");
+        return -EFAULT;
+    }
+
+    ret = sscanf(tmpbuf, "%d", &mode);
+    if (ret != 1) {
+        FTS_ERROR("get mode fails,ret=%d", ret);
+        return -EINVAL;
+    }
+
+    FTS_INFO("switch touch sense on/off to %d", mode);
+    ret = fts_write_reg(FTS_REG_SENSE_ONOFF, !!mode);
+    if (ret < 0) {
+        FTS_ERROR("write reg0xEA fails");
+        return ret;
+    }
+
+    return count;
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_sense_onoff_fops = {
+    .proc_read   = proc_sense_onoff_read,
+    .proc_write  = proc_sense_onoff_write,
+};
+#else
+static const struct file_operations proc_sense_onoff_fops = {
+    .owner  = THIS_MODULE,
+    .read   = proc_sense_onoff_read,
+    .write  = proc_sense_onoff_write,
+};
+#endif
+
 struct proc_dir_entry *proc_fw_update;
 struct proc_dir_entry *proc_scan_modes;
 struct proc_dir_entry *proc_touch_mode;
@@ -1860,6 +1938,7 @@ struct proc_dir_entry *proc_lpwg;
 struct proc_dir_entry *proc_high_sensitivity;
 struct proc_dir_entry *proc_palm;
 struct proc_dir_entry *proc_grip;
+struct proc_dir_entry *proc_sense_onoff;
 
 static int fts_create_ctrl_procs(struct fts_ts_data *ts_data)
 {
@@ -1921,6 +2000,14 @@ static int fts_create_ctrl_procs(struct fts_ts_data *ts_data)
         return ret;
     }
 
+    proc_sense_onoff = proc_create_data("sense_onoff", S_IRUSR|S_IWUSR,
+        ts_data->proc_touch_entry, &proc_sense_onoff_fops, ts_data);
+    if (!proc_sense_onoff) {
+        FTS_ERROR("create proc_sense_onoff entry fail");
+        ret = -ENOMEM;
+        return ret;
+    }
+
     FTS_INFO("create test procs succeeds");
     return 0;
 }
@@ -1947,6 +2034,9 @@ static void fts_free_ctrl_procs(void)
 
     if (proc_grip)
         proc_remove(proc_grip);
+
+    if (proc_sense_onoff)
+        proc_remove(proc_sense_onoff);
 }
 
 int fts_create_sysfs(struct fts_ts_data *ts_data)
