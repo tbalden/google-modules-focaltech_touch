@@ -79,7 +79,8 @@ Test Status
 #define FACTORY_TEST_RETRY_DELAY                100
 
 #define DEVIDE_MODE_ADDR                        0x00
-#define REG_FW_VERSION                          0xA6
+#define REG_FW_MAJOR_VER                        0xA6
+#define REG_FW_MINOR_VER                        0xAD
 #define REG_VA_TOUCH_THR                        0x80
 #define REG_VKEY_TOUCH_THR                      0x82
 
@@ -440,7 +441,8 @@ struct fts_test {
     struct fts_ts_data *ts_data;
     struct fts_test_node node;
     struct fts_test_node sc_node;
-    u8 fw_ver;
+    u8 fw_major_ver;
+    u8 fw_minor_ver;
     u8 va_touch_thr;
     u8 vk_touch_thr;
     bool key_support;

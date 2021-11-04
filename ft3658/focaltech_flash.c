@@ -1573,9 +1573,9 @@ static int fts_fwupg_get_ver_in_tp(u8 *ver)
         return -EINVAL;
     }
 
-    ret = fts_read_reg(FTS_REG_FW_VER, ver);
+    ret = fts_read_reg(FTS_REG_FW_MAJOR_VER, ver);
     if (ret < 0) {
-        FTS_ERROR("read fw ver from tp fail");
+        FTS_ERROR("read fw major ver from tp fail");
         return ret;
     }
 
@@ -1621,7 +1621,7 @@ static bool fts_fwupg_need_upgrade(struct fts_upgrade *upg)
             return false;
         }
 
-        FTS_INFO("fw version in tp:%x, host:%x", fw_ver_in_tp, fw_ver_in_host);
+        FTS_INFO("fw major version in tp:%x, host:%x", fw_ver_in_tp, fw_ver_in_host);
         if (fw_ver_in_tp != fw_ver_in_host) {
             return true;
         }
