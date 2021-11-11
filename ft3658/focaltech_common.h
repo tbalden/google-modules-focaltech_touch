@@ -104,13 +104,16 @@
 #define FTS_REG_IDE_PARA_STATUS             0xB6
 #define FTS_REG_GLOVE_MODE_EN               0xC0
 #define FTS_REG_COVER_MODE_EN               0xC1
+#define FTS_REG_PALM_EN                     0xC5
 #define FTS_REG_CHARGER_MODE_EN             0x8B
+#define FTS_REG_EDGE_MODE_EN                0x8C
 #define FTS_REG_GESTURE_EN                  0xD0
 #define FTS_REG_GESTURE_OUTPUT_ADDRESS      0xD3
 #define FTS_REG_MODULE_ID                   0xE3
 #define FTS_REG_LIC_VER                     0xE4
 #define FTS_REG_ESD_SATURATE                0xED
 #define FTS_REG_MONITOR_CTRL                0x86
+#define FTS_REG_SENSE_ONOFF                 0xEA
 
 #define FTS_SYSFS_ECHO_ON(buf)      (buf[0] == '1')
 #define FTS_SYSFS_ECHO_OFF(buf)     (buf[0] == '0')

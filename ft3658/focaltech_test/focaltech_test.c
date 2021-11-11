@@ -3224,90 +3224,88 @@ struct proc_dir_entry *proc_test_noise;
 struct proc_dir_entry *proc_test_short;
 struct proc_dir_entry *proc_test_panel_differ;
 
-#define MODE_OWNER_READ   0400
 static int fts_create_test_procs(struct fts_ts_data *ts_data)
 {
     int ret = 0;
 
-    proc_run_os_test = proc_create_data("run_os_test", MODE_OWNER_READ,
+    proc_run_os_test = proc_create_data("run_os_test", S_IRUSR,
         fts_proc_test_dir, &proc_run_os_test_fops, fts_ftest);
     if (!proc_run_os_test) {
         FTS_ERROR("create proc_run_os_test entry fail");
         return -ENOMEM;
     }
 
-    proc_test_fwver = proc_create("FW_Version", MODE_OWNER_READ,
+    proc_test_fwver = proc_create("FW_Version", S_IRUSR,
         ts_data->proc_touch_entry, &proc_test_fwver_fops);
     if (!proc_test_fwver) {
         FTS_ERROR("create proc_test_fwver entry fail");
         return -ENOMEM;
     }
 
-    proc_test_chnum = proc_create("Channel_Num", MODE_OWNER_READ,
+    proc_test_chnum = proc_create("Channel_Num", S_IRUSR,
         ts_data->proc_touch_entry, &proc_test_chnum_fops);
     if (!proc_test_chnum) {
         FTS_ERROR("create proc_test_chnum entry fail");
         return -ENOMEM;
     }
 
-    proc_test_reset_pin = proc_create("Reset_Pin", MODE_OWNER_READ,
+    proc_test_reset_pin = proc_create("Reset_Pin", S_IRUSR,
         ts_data->proc_touch_entry, &proc_test_reset_fops);
     if (!proc_test_reset_pin) {
         FTS_ERROR("create proc_test_reset_pin entry fail");
         return -ENOMEM;
     }
 
-    proc_test_int_pin = proc_create("INT_PIN", MODE_OWNER_READ,
+    proc_test_int_pin = proc_create("INT_PIN", S_IRUSR,
         ts_data->proc_touch_entry, &proc_test_int_fops);
     if (!proc_test_int_pin) {
         FTS_ERROR("create proc_test_int_pin entry fail");
         return -ENOMEM;
     }
 
-    proc_test_raw = proc_create_data("Rawdata", MODE_OWNER_READ,
+    proc_test_raw = proc_create_data("Rawdata", S_IRUSR,
         fts_proc_test_dir, &proc_test_raw_fops, ts_data);
     if (!proc_test_raw) {
         FTS_ERROR("create proc_test_raw entry fail");
         return -ENOMEM;
     }
 
-    proc_test_uniformity = proc_create_data("Rawdata_Uniformity",
-        MODE_OWNER_READ, fts_proc_test_dir,
-        &proc_test_uniformity_fops, ts_data);
+    proc_test_uniformity = proc_create_data("Rawdata_Uniformity", S_IRUSR,
+        fts_proc_test_dir, &proc_test_uniformity_fops, ts_data);
     if (!proc_test_raw) {
         FTS_ERROR("create proc_test_uniformity entry fail");
         return -ENOMEM;
     }
 
-    proc_test_sraw = proc_create_data("Scap_Rawdata", MODE_OWNER_READ,
+    proc_test_sraw = proc_create_data("Scap_Rawdata", S_IRUSR,
         fts_proc_test_dir, &proc_test_sraw_fops, ts_data);
     if (!proc_test_sraw) {
         FTS_ERROR("create proc_test_sraw entry fail");
         return -ENOMEM;
     }
 
-    proc_test_scb = proc_create_data("Scap_CB", MODE_OWNER_READ,
+    proc_test_scb = proc_create_data("Scap_CB", S_IRUSR,
         fts_proc_test_dir, &proc_test_scb_fops, ts_data);
     if (!proc_test_scb) {
         FTS_ERROR("create proc_test_scb entry fail");
         return -ENOMEM;
     }
 
-    proc_test_noise = proc_create_data("Noise", MODE_OWNER_READ,
+    proc_test_noise = proc_create_data("Noise", S_IRUSR,
         fts_proc_test_dir, &proc_test_noise_fops, ts_data);
     if (!proc_test_noise) {
         FTS_ERROR("create proc_test_noise entry fail");
         return -ENOMEM;
     }
 
-    proc_test_short = proc_create_data("Short", MODE_OWNER_READ,
+    proc_test_short = proc_create_data("Short", S_IRUSR,
         fts_proc_test_dir, &proc_test_short_fops, ts_data);
     if (!proc_test_short) {
         FTS_ERROR("create proc_test_short entry fail");
         return -ENOMEM;
     }
 
-    proc_test_panel_differ = proc_create_data("Panel_Differ", MODE_OWNER_READ,
+    proc_test_panel_differ = proc_create_data("Panel_Differ", S_IRUSR,
         fts_proc_test_dir, &proc_test_panel_differ_fops, ts_data);
     if (!proc_test_panel_differ) {
         FTS_ERROR("create proc_test_panel_differ entry fail");
