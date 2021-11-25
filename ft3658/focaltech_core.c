@@ -1219,24 +1219,18 @@ static int fts_pinctrl_init(struct fts_ts_data *ts)
         goto err_pinctrl_get;
     }
 
-    ts->pins_active = pinctrl_lookup_state(ts->pinctrl, "pmx_ts_active");
+    ts->pins_active = pinctrl_lookup_state(ts->pinctrl, "ts_active");
     if (IS_ERR_OR_NULL(ts->pins_active)) {
         FTS_ERROR("Pin state[active] not found");
         ret = PTR_ERR(ts->pins_active);
         goto err_pinctrl_lookup;
     }
 
-    ts->pins_suspend = pinctrl_lookup_state(ts->pinctrl, "pmx_ts_suspend");
+    ts->pins_suspend = pinctrl_lookup_state(ts->pinctrl, "ts_suspend");
     if (IS_ERR_OR_NULL(ts->pins_suspend)) {
         FTS_ERROR("Pin state[suspend] not found");
         ret = PTR_ERR(ts->pins_suspend);
         goto err_pinctrl_lookup;
-    }
-
-    ts->pins_release = pinctrl_lookup_state(ts->pinctrl, "pmx_ts_release");
-    if (IS_ERR_OR_NULL(ts->pins_release)) {
-        FTS_ERROR("Pin state[release] not found");
-        ret = PTR_ERR(ts->pins_release);
     }
 
     return 0;
@@ -1246,7 +1240,6 @@ err_pinctrl_lookup:
     }
 err_pinctrl_get:
     ts->pinctrl = NULL;
-    ts->pins_release = NULL;
     ts->pins_suspend = NULL;
     ts->pins_active = NULL;
     return ret;
@@ -1255,7 +1248,7 @@ err_pinctrl_get:
 static int fts_pinctrl_select_normal(struct fts_ts_data *ts)
 {
     int ret = 0;
-
+    FTS_DEBUG("Pins control select normal");
     if (ts->pinctrl && ts->pins_active) {
         ret = pinctrl_select_state(ts->pinctrl, ts->pins_active);
         if (ret < 0) {
@@ -1269,29 +1262,11 @@ static int fts_pinctrl_select_normal(struct fts_ts_data *ts)
 static int fts_pinctrl_select_suspend(struct fts_ts_data *ts)
 {
     int ret = 0;
-
+    FTS_DEBUG("Pins control select suspend");
     if (ts->pinctrl && ts->pins_suspend) {
         ret = pinctrl_select_state(ts->pinctrl, ts->pins_suspend);
         if (ret < 0) {
             FTS_ERROR("Set suspend pin state error:%d", ret);
-        }
-    }
-
-    return ret;
-}
-
-static int fts_pinctrl_select_release(struct fts_ts_data *ts)
-{
-    int ret = 0;
-
-    if (ts->pinctrl) {
-        if (IS_ERR_OR_NULL(ts->pins_release)) {
-            devm_pinctrl_put(ts->pinctrl);
-            ts->pinctrl = NULL;
-        } else {
-            ret = pinctrl_select_state(ts->pinctrl, ts->pins_release);
-            if (ret < 0)
-                FTS_ERROR("Set gesture pin state error:%d", ret);
         }
     }
 
@@ -1352,28 +1327,6 @@ static int fts_power_source_ctrl(struct fts_ts_data *ts_data, int enable)
     return ret;
 }
 
-int fts_pinctrl_configure(struct fts_ts_data *ts, bool enable)
-{
-    struct pinctrl_state *state;
-
-    FTS_DEBUG("%s\n", enable ? "ACTIVE" : "SUSPEND");
-
-    if (enable) {
-        state = pinctrl_lookup_state(ts->pdata->pinctrl, "ts_active");
-        if (IS_ERR(ts->pdata->pinctrl))
-            FTS_ERROR("Could not get active pinstate\n");
-    } else {
-        state = pinctrl_lookup_state(ts->pdata->pinctrl, "ts_suspend");
-        if (IS_ERR(ts->pdata->pinctrl))
-            FTS_ERROR("Could not get suspend pinstate\n");
-    }
-
-    if (!IS_ERR_OR_NULL(state))
-        return pinctrl_select_state(ts->pdata->pinctrl, state);
-
-    return 0;
-}
-
 /*****************************************************************************
 * Name: fts_power_source_init
 * Brief: Init regulator power:avdd/dvdd(if have), generally, no dvdd
@@ -1389,6 +1342,12 @@ static int fts_power_source_init(struct fts_ts_data *ts_data)
     int ret = 0;
 
     FTS_FUNC_ENTER();
+
+#if FTS_PINCTRL_EN
+    fts_pinctrl_init(ts_data);
+    fts_pinctrl_select_normal(ts_data);
+#endif
+
     if (of_property_read_bool(ts_data->dev->of_node, "avdd-supply")) {
         ts_data->avdd = regulator_get(ts_data->dev, "avdd");
         if (IS_ERR_OR_NULL(ts_data->avdd)) {
@@ -1419,27 +1378,16 @@ static int fts_power_source_init(struct fts_ts_data *ts_data)
         FTS_ERROR("fail to enable power(regulator)");
     }
 
-    ts_data->pdata->pinctrl = devm_pinctrl_get(&ts_data->spi->dev);
-    fts_pinctrl_configure(ts_data, true);
-
-#if FTS_PINCTRL_EN
-    fts_pinctrl_init(ts_data);
-    fts_pinctrl_select_normal(ts_data);
-#endif
-
     FTS_FUNC_EXIT();
     return ret;
 }
 
 static int fts_power_source_exit(struct fts_ts_data *ts_data)
 {
-    fts_pinctrl_configure(ts_data, false);
-#if FTS_PINCTRL_EN
-    fts_pinctrl_select_release(ts_data);
-#endif
-
     fts_power_source_ctrl(ts_data, DISABLE);
-
+#if FTS_PINCTRL_EN
+    fts_pinctrl_select_suspend(ts_data);
+#endif
     if (!IS_ERR_OR_NULL(ts_data->avdd)) {
         regulator_put(ts_data->avdd);
         ts_data->avdd = NULL;
@@ -1456,15 +1404,15 @@ static int fts_power_source_exit(struct fts_ts_data *ts_data)
 static int fts_power_source_suspend(struct fts_ts_data *ts_data)
 {
     int ret = 0;
-    fts_pinctrl_configure(ts_data, false);
-#if FTS_PINCTRL_EN
-    fts_pinctrl_select_suspend(ts_data);
-#endif
 
     ret = fts_power_source_ctrl(ts_data, DISABLE);
     if (ret < 0) {
         FTS_ERROR("power off fail, ret=%d", ret);
     }
+
+#if FTS_PINCTRL_EN
+    fts_pinctrl_select_suspend(ts_data);
+#endif
 
     return ret;
 }
@@ -1472,16 +1420,14 @@ static int fts_power_source_suspend(struct fts_ts_data *ts_data)
 static int fts_power_source_resume(struct fts_ts_data *ts_data)
 {
     int ret = 0;
+#if FTS_PINCTRL_EN
+    fts_pinctrl_select_normal(ts_data);
+#endif
 
     ret = fts_power_source_ctrl(ts_data, ENABLE);
     if (ret < 0) {
         FTS_ERROR("power on fail, ret=%d", ret);
     }
-
-    fts_pinctrl_configure(ts_data, true);
-#if FTS_PINCTRL_EN
-    fts_pinctrl_select_normal(ts_data);
-#endif
 
     return ret;
 }
@@ -2029,7 +1975,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 #endif
 
 #if (!FTS_CHIP_IDC)
-    fts_reset_proc(200);
+    //fts_reset_proc(200);
 #endif
 
     ret = fts_get_ic_information(ts_data);
@@ -2183,7 +2129,6 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 #if FTS_POINT_REPORT_CHECK_EN
     fts_point_report_check_exit(ts_data);
 #endif
-    fts_pinctrl_configure(ts_data, false);
     fts_release_apk_debug_channel(ts_data);
     fts_remove_sysfs(ts_data);
     fts_ex_mode_exit(ts_data);

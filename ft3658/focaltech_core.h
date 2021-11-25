@@ -130,7 +130,6 @@ struct fts_ts_platform_data {
     u32 irq_gpio_flags;
     u32 reset_gpio;
     u32 reset_gpio_flags;
-    struct pinctrl *pinctrl;
     struct drm_panel *panel;
     u32 initial_panel_index;
     bool have_key;
@@ -224,7 +223,6 @@ struct fts_ts_data {
     struct pinctrl *pinctrl;
     struct pinctrl_state *pins_active;
     struct pinctrl_state *pins_suspend;
-    struct pinctrl_state *pins_release;
 #endif
 #if defined(CONFIG_FB) || defined(CONFIG_DRM)
     struct notifier_block fb_notif;
