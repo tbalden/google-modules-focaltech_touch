@@ -120,7 +120,6 @@ Test Status
 #define FACTORY_REG_OPEN_REG23                  0x23
 #define FACTORY_REG_OPEN_REG2E                  0x2E
 #define FACTORY_REG_OPEN_REG86                  0x86
-#define FACTORY_REG_WORK_MODE                   0x88
 #define FACTORY_REG_K1                          0x31
 #define FACTORY_REG_K2                          0x32
 #define FACTORY_REG_RAWDATA_ADDR                0x6A
@@ -158,6 +157,13 @@ Test Status
 #define FACTORY_REG_SHORT_ADDR_MC               0xF4
 #define FACTORY_REG_FIR                         0xFB
 
+/* noise */
+#define FACTORY_REG_MAXDIFF_EN                  0x1A
+#define FACTORY_REG_MAXDIFF_FLAG                0x1B
+#define FACTORY_REG_FRAME_NUM_H                 0x1C
+#define FACTORY_REG_FRAME_NUM_L                 0x1D
+#define FACTORY_REG_NOISE_ADDR                  0xCE
+
 #define FACTROY_REG_SHORT2_TEST_EN              0xC0
 #define FACTROY_REG_SHORT2_CA                   0x01
 #define FACTROY_REG_SHORT2_CC                   0x02
@@ -186,12 +192,8 @@ Test Status
 #define FTS_MAX_SORT_SC                         32768
 #define FTS_MIN_SORT_SC                         0
 
-/* noise */
-#define FACTORY_REG_MAXDIFF_EN                  0x1A
-#define FACTORY_REG_MAXDIFF_FLAG                0x1B
-#define FACTORY_REG_FRAME_NUM_H                 0x1C
-#define FACTORY_REG_FRAME_NUM_L                 0x1D
-#define FACTORY_REG_NOISE_ADDR                  0xCE
+#define FTS_TMP_REG_88                          0x88    //for Register R/W test
+#define FTS_TMP_REG_SOFT_RESET                  0xFC
 
 /*****************************************************************************
 * enumerations, structures and unions

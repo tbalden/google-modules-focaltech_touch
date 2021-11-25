@@ -2412,31 +2412,31 @@ static const struct file_operations proc_test_chnum_fops = {
 };
 #endif
 
-/*Reset_Pin Test*/
-static int proc_test_reset_show(struct seq_file *s, void *v)
+/* HW Reset_Pin Test */
+static int proc_test_hw_reset_show(struct seq_file *s, void *v)
 {
     int ret = 0;
     u8 reg88_val = 0xFF;
     u8 tmp_val = 0;
 
-    ret = fts_read_reg(FACTORY_REG_WORK_MODE, &reg88_val);
+    ret = fts_read_reg(FTS_TMP_REG_88, &reg88_val);
     if (ret < 0) {
-        FTS_ERROR("read FACTORY_REG_WORK_MODE register fails");
+        FTS_ERROR("read reg88 fails");
         return ret;
     }
 
     tmp_val = reg88_val - 1;
-    ret = fts_write_reg(FACTORY_REG_WORK_MODE, tmp_val);
+    ret = fts_write_reg(FTS_TMP_REG_88, tmp_val);
     if (ret < 0) {
-        FTS_ERROR("write FACTORY_REG_WORK_MODE register fails");
+        FTS_ERROR("write reg88 fails");
         return ret;
     }
 
     fts_reset_proc(200);
 
-    ret = fts_read_reg(FACTORY_REG_WORK_MODE, &tmp_val);
+    ret = fts_read_reg(FTS_TMP_REG_88, &tmp_val);
     if (ret < 0) {
-        FTS_ERROR("read FACTORY_REG_WORK_MODE register back fails");
+        FTS_ERROR("read reg88 fails");
         return ret;
     }
 
@@ -2448,21 +2448,89 @@ static int proc_test_reset_show(struct seq_file *s, void *v)
     return ret;
 }
 
-static int proc_test_reset_open(struct inode *inode, struct file *file)
+static int proc_test_hw_reset_open(struct inode *inode, struct file *file)
 {
-    return single_open(file, proc_test_reset_show, PDE_DATA(inode));
+    return single_open(file, proc_test_hw_reset_show, PDE_DATA(inode));
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
-static const struct proc_ops proc_test_reset_fops = {
-    .proc_open   = proc_test_reset_open,
+static const struct proc_ops proc_test_hw_reset_fops = {
+    .proc_open   = proc_test_hw_reset_open,
     .proc_read   = seq_read,
     .proc_lseek  = seq_lseek,
     .proc_release = single_release,
 };
 #else
-static const struct file_operations proc_test_reset_fops = {
-    .open   = proc_test_reset_open,
+static const struct file_operations proc_test_hw_reset_fops = {
+    .owner  = THIS_MODULE,
+    .open   = proc_test_hw_reset_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+/* SW Reset Test */
+static int proc_test_sw_reset_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    u8 reg88_val = 0;
+    u8 tmp_val = 0;
+
+    ret = fts_read_reg(FTS_TMP_REG_88, &reg88_val);
+    if (ret < 0) {
+        FTS_ERROR("read reg88 fails");
+        return ret;
+    }
+
+    ret = fts_write_reg(FTS_TMP_REG_88, 0x22);
+    if (ret < 0) {
+        FTS_ERROR("write reg88 fails for SW reset");
+        return ret;
+    }
+
+    ret = fts_write_reg(FTS_TMP_REG_SOFT_RESET, 0xAA);
+    if (ret < 0) {
+        FTS_ERROR("write 0xAA to reg 0xFC fails");
+        return ret;
+    }
+
+    ret = fts_write_reg(FTS_TMP_REG_SOFT_RESET, 0x66);
+    if (ret < 0) {
+        FTS_ERROR("write 0x66 to reg 0xFC fails");
+        return ret;
+    }
+    sys_delay(40);
+    ret = fts_read_reg(FTS_TMP_REG_88, &tmp_val);
+    if (ret < 0) {
+        FTS_ERROR("read reg88 fails for SW reset");
+        return ret;
+    }
+
+    if (tmp_val == reg88_val)
+        seq_printf(s, "SW Reset test PASS.\n");
+    else
+        seq_printf(s, "SW Reset test FAIL.\n");
+
+    return 0;
+}
+
+static int proc_test_sw_reset_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_sw_reset_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_sw_reset_fops = {
+    .proc_open   = proc_test_sw_reset_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release = single_release,
+};
+#else
+static const struct file_operations proc_test_sw_reset_fops = {
+    .owner  = THIS_MODULE,
+    .open   = proc_test_sw_reset_open,
     .read   = seq_read,
     .llseek = seq_lseek,
     .release = single_release,
@@ -3215,6 +3283,8 @@ struct proc_dir_entry *proc_run_os_test;
 struct proc_dir_entry *proc_test_fwver;
 struct proc_dir_entry *proc_test_chnum;
 struct proc_dir_entry *proc_test_reset_pin;
+struct proc_dir_entry *proc_test_sw_reset;
+
 struct proc_dir_entry *proc_test_int_pin;
 struct proc_dir_entry *proc_test_raw;
 struct proc_dir_entry *proc_test_uniformity;
@@ -3250,9 +3320,16 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
     }
 
     proc_test_reset_pin = proc_create("Reset_Pin", S_IRUSR,
-        ts_data->proc_touch_entry, &proc_test_reset_fops);
+        ts_data->proc_touch_entry, &proc_test_hw_reset_fops);
     if (!proc_test_reset_pin) {
         FTS_ERROR("create proc_test_reset_pin entry fail");
+        return -ENOMEM;
+    }
+
+    proc_test_sw_reset = proc_create("SW_Reset", S_IRUSR,
+        ts_data->proc_touch_entry, &proc_test_sw_reset_fops);
+    if (!proc_test_sw_reset) {
+        FTS_ERROR("create proc_test_sw_reset entry fail");
         return -ENOMEM;
     }
 
@@ -3331,6 +3408,9 @@ static void fts_free_test_procs(void)
 
     if (proc_test_reset_pin)
         proc_remove(proc_test_reset_pin);
+
+    if (proc_test_sw_reset)
+        proc_remove(proc_test_sw_reset);
 
     if (proc_test_int_pin)
         proc_remove(proc_test_int_pin);
