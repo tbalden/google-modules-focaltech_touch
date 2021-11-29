@@ -114,6 +114,7 @@
 #define FTS_REG_ESD_SATURATE                0xED
 #define FTS_REG_MONITOR_CTRL                0x86
 #define FTS_REG_SENSE_ONOFF                 0xEA
+#define FTS_REG_IRQ_ONOFF                   0xEB
 
 #define FTS_SYSFS_ECHO_ON(buf)      (buf[0] == '1')
 #define FTS_SYSFS_ECHO_OFF(buf)     (buf[0] == '0')
