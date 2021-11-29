@@ -281,7 +281,7 @@ int ft5652_start_scan(int frame_num)
         return -EINVAL;
     }
 
-    addr = DEVIDE_MODE_ADDR;
+    addr = DIVIDE_MODE_ADDR;
     val = 0xC0;
     finish_val = 0x40;
 
@@ -366,10 +366,10 @@ static int ft5652_rawdata_test(struct fts_test *tdata, bool *test_result)
         goto test_err;
     }
 
-    /* set frequecy high */
+    /* set frequency high */
     ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, 0x81);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("set frequecy fail,ret=%d\n", ret);
+        FTS_TEST_SAVE_ERR("set frequency fail,ret=%d\n", ret);
         goto restore_reg;
     }
 
@@ -550,10 +550,10 @@ static int ft5652_uniformity_test(struct fts_test *tdata, bool *test_result)
         goto test_err;
     }
 
-    /* set frequecy high */
+    /* set frequency high */
     ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, 0x81);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("set frequecy fail,ret=%d\n", ret);
+        FTS_TEST_SAVE_ERR("set frequency fail,ret=%d\n", ret);
         goto restore_reg;
     }
 
@@ -708,11 +708,11 @@ restore_reg:
 test_err:
     if (result && result2 && result3) {
         *test_result = true;
-        FTS_TEST_SAVE_INFO("uniformity test is Pass");
+        FTS_TEST_SAVE_INFO("====== uniformity test PASS");
         if (tdata->s) seq_printf(tdata->s, "------ uniformity test is Pass\n");
     } else {
         *test_result = false;
-        FTS_TEST_SAVE_ERR("uniformity test is NG");
+        FTS_TEST_SAVE_ERR("====== uniformity test NG");
         if (tdata->s) seq_printf(tdata->s, "------ uniformity test is NG\n");
     }
 
@@ -1353,10 +1353,10 @@ static int ft5652_panel_differ_test(struct fts_test *tdata, bool *test_result)
         goto restore_reg;
     }
 
-    /* set frequecy high */
+    /* set frequency high */
     ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, 0x81);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("set frequecy fail,ret=%d\n", ret);
+        FTS_TEST_SAVE_ERR("set frequency fail,ret=%d\n", ret);
         goto restore_reg;
     }
 
@@ -1737,7 +1737,7 @@ int fts_test_get_raw(int *raw, u8 tx, u8 rx)
     u8 state = 0;
     bool param_update_support = false;
 
-    FTS_INFO("====== Test Item: rawdata test start");
+    FTS_TEST_INFO("====== Test Item: rawdata test start\n");
 
     fts_test_read_reg(FACTORY_REG_PARAM_UPDATE_STATE_TOUCH, &state);
     param_update_support = (state == 0xAA);
@@ -1762,10 +1762,10 @@ int fts_test_get_raw(int *raw, u8 tx, u8 rx)
         return ret;
     }
 
-    /* set frequecy high */
+    /* set frequency high */
     ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, 0x81);
     if (ret < 0) {
-        FTS_TEST_ERROR("set frequecy fail,ret=%d\n", ret);
+        FTS_TEST_ERROR("set frequency fail,ret=%d\n", ret);
         fts_test_get_raw_restore_reg(fre, data_sel, data_type);
         return ret;
     }
@@ -1806,7 +1806,7 @@ int fts_test_get_raw(int *raw, u8 tx, u8 rx)
     /*********************GET RAWDATA*********************/
     for (i = 0; i < 3; i++) {
         FTS_TEST_INFO("get rawdata,i=%d", i);
-        ret = fts_test_write_reg(DEVIDE_MODE_ADDR, 0xC0);
+        ret = fts_test_write_reg(DIVIDE_MODE_ADDR, 0xC0);
         if (ret < 0) {
             FTS_TEST_ERROR("write start scan mode fail\n");
             continue;
@@ -1815,12 +1815,12 @@ int fts_test_get_raw(int *raw, u8 tx, u8 rx)
         while (times++ < FACTORY_TEST_RETRY) {
             sys_delay(FACTORY_TEST_DELAY);
 
-            ret = fts_test_read_reg(DEVIDE_MODE_ADDR, &val);
+            ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &val);
             if ((ret >= 0) && (val == 0x40)) {
                 break;
-            } else
-                FTS_TEST_DBG("reg%x=%x,retry:%d", DEVIDE_MODE_ADDR, val,
-                    times);
+            } else {
+                FTS_TEST_DBG("reg%x=%x,retry:%d", DIVIDE_MODE_ADDR, val, times);
+            }
         }
 
         if (times >= FACTORY_TEST_RETRY) {
@@ -1830,7 +1830,7 @@ int fts_test_get_raw(int *raw, u8 tx, u8 rx)
 
         ret = fts_test_write_reg(FACTORY_REG_LINE_ADDR, 0xAA);
         if (ret < 0) {
-            FTS_TEST_ERROR("wirte line/start addr fail\n");
+            FTS_TEST_ERROR("write line/start addr fail\n");
             continue;
         }
 
@@ -1844,7 +1844,196 @@ int fts_test_get_raw(int *raw, u8 tx, u8 rx)
     }
 
     fts_test_get_raw_restore_reg(fre, data_sel, data_type);
-    FTS_TEST_INFO("====== Test Item: rawdata test end");
+    FTS_TEST_INFO("====== Test Item: rawdata test end\n");
+    return ret;
+}
+
+int fts_test_get_baseline(int *raw,int *base_raw, u8 tx, u8 rx)
+{
+    int ret = 0;
+    int i = 0;
+    int times = 0;
+    int node_num = tx * rx;
+    u8 fre = 0;
+    u8 data_sel = 0;
+    u8 data_type = 0;
+    u8 val = 0;
+    u8 state = 0;
+    bool param_update_support = false;
+
+    FTS_TEST_INFO("====== Test Item: baseline test start\n");
+
+    ret = enter_factory_mode();
+    if (ret < 0) {
+        FTS_TEST_ERROR("failed to enter factory mode,ret=%d\n", ret);
+        goto test_err;
+    }
+
+    fts_test_read_reg(FACTORY_REG_PARAM_UPDATE_STATE_TOUCH, &state);
+    param_update_support = (0xAA == state);
+    FTS_TEST_INFO("Param update:%d", param_update_support);
+
+    /* save origin value */
+    ret = fts_test_read_reg(FACTORY_REG_FRE_LIST, &fre);
+    if (ret) {
+        FTS_TEST_ERROR("read 0x0A fail,ret=%d\n", ret);
+        goto test_err;
+    }
+
+    ret = fts_test_read_reg(FACTORY_REG_DATA_TYPE, &data_type);
+    if (ret) {
+        FTS_ERROR("read 0x5B fail,ret=%d\n", ret);
+        goto test_err;
+    }
+
+    ret = fts_test_read_reg(FACTORY_REG_DATA_SELECT, &data_sel);
+    if (ret) {
+        FTS_TEST_ERROR("read 0x06 error,ret=%d\n", ret);
+        goto test_err;
+    }
+
+    /* set frequency high */
+    ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, 0x81);
+    if (ret < 0) {
+        FTS_TEST_ERROR("set frequency fail,ret=%d\n", ret);
+        goto restore_reg;
+    }
+
+    if (param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            goto restore_reg;
+        }
+    }
+
+    ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, 0x01);
+    if (ret < 0) {
+        FTS_TEST_ERROR("set raw type fail,ret=%d\n", ret);
+        goto restore_reg;
+    }
+
+    /* select rawdata */
+    ret = fts_test_write_reg(FACTORY_REG_DATA_SELECT, 0x00);
+    if (ret < 0) {
+        FTS_TEST_ERROR("set fir fail,ret=%d\n", ret);
+        goto restore_reg;
+    }
+
+    if (param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+            goto restore_reg;
+        }
+    }
+
+    /*********************GET RAWDATA*********************/
+    FTS_TEST_INFO("get rawdata,i=%d", i);
+    ret = fts_test_write_reg(DIVIDE_MODE_ADDR, 0xC0);
+    if (ret < 0) {
+        FTS_TEST_ERROR("write start scan mode fail\n");
+    }
+
+    while (times++ < FACTORY_TEST_RETRY) {
+        sys_delay(FACTORY_TEST_DELAY);
+        ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &val);
+        if ((ret >= 0) && (val == 0x40)) {
+            break;
+        } else {
+            FTS_TEST_DBG("reg%x=%x,retry:%d", DIVIDE_MODE_ADDR, val, times);
+        }
+    }
+
+    if (times >= FACTORY_TEST_RETRY) {
+        FTS_TEST_ERROR("scan timeout\n");
+    }
+
+    ret = fts_test_write_reg(FACTORY_REG_LINE_ADDR, 0xAA);
+    if (ret < 0) {
+        FTS_TEST_ERROR("write line/start addr fail\n");
+    }
+
+    ret = read_mass_data(FACTORY_REG_RAWDATA_ADDR_MC_SC, (node_num * 2),raw);
+
+    if (ret < 0) {
+        FTS_TEST_ERROR("get rawdata fail,ret=%d\n", ret);
+        goto restore_reg;
+    }
+
+    /* select rawdata */
+    ret = fts_test_write_reg(FACTORY_REG_DATA_SELECT, 0x01);
+    if (ret < 0) {
+        goto restore_reg;
+    }
+
+    if (param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            goto restore_reg;
+        }
+    }
+
+    /*********************GET DATA*********************/
+    ret = fts_test_write_reg(DIVIDE_MODE_ADDR, 0xC0);
+    while (times++ < FACTORY_TEST_RETRY) {
+        sys_delay(FACTORY_TEST_DELAY);
+
+        ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &val);
+        if ((ret >= 0) && (val == 0x40)) {
+            break;
+        } else {
+            FTS_TEST_DBG("reg%x=%x,retry:%d", DIVIDE_MODE_ADDR, val, times);
+        }
+    }
+
+    if (times >= FACTORY_TEST_RETRY) {
+        FTS_TEST_ERROR("scan timeout\n");
+    }
+
+    ret = fts_test_write_reg(FACTORY_REG_LINE_ADDR, 0xAA);
+    if (ret < 0) {
+        FTS_TEST_ERROR("write line/start addr fail\n");
+    }
+    ret = read_mass_data(FACTORY_REG_RAWDATA_ADDR_MC_SC, (node_num * 2), base_raw);
+    if (ret < 0) {
+        FTS_TEST_ERROR("get rawdata fail,ret=%d\n", ret);
+        goto restore_reg;
+    }
+
+restore_reg:
+    /* set the origin value */
+    ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, fre);
+    if (ret < 0) {
+        FTS_TEST_ERROR("restore 0x0A fail,ret=%d\n", ret);
+    }
+
+    if (param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
+    }
+
+    ret = fts_test_write_reg(FACTORY_REG_DATA_TYPE, data_type);
+    if (ret < 0) {
+        FTS_TEST_ERROR("set raw type fail,ret=%d\n", ret);
+    }
+
+    ret = fts_test_write_reg(FACTORY_REG_DATA_SELECT, data_sel);
+    if (ret < 0) {
+        FTS_TEST_ERROR("restore 0x06 fail,ret=%d\n", ret);
+    }
+
+    if (param_update_support) {
+        ret = wait_state_update(TEST_RETVAL_AA);
+        if (ret < 0) {
+            FTS_TEST_SAVE_ERR("wait state update fail\n");
+        }
+    }
+
+test_err:
+    FTS_TEST_INFO("====== Test Item: baseline test end\n");
     return ret;
 }
 
@@ -1902,10 +2091,10 @@ int fts_test_get_uniformity_data(int *rawdata_linearity, u8 tx, u8 rx)
         return -ENOMEM;
     }
 
-    /* set frequecy high */
+    /* set frequency high */
     ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, 0x81);
     if (ret < 0) {
-        FTS_TEST_ERROR("set frequecy fail,ret=%d\n", ret);
+        FTS_TEST_ERROR("set frequency fail,ret=%d\n", ret);
         fts_free(raw);
         goto exit;
     }
@@ -1942,7 +2131,7 @@ int fts_test_get_uniformity_data(int *rawdata_linearity, u8 tx, u8 rx)
 
     for (i = 0; i < 3; i++) {
         FTS_TEST_INFO("get rawdata,i=%d", i);
-        ret = fts_test_write_reg(DEVIDE_MODE_ADDR, 0xC0);
+        ret = fts_test_write_reg(DIVIDE_MODE_ADDR, 0xC0);
         if (ret < 0) {
             FTS_TEST_ERROR("write start scan mode fail\n");
             continue;
@@ -1951,11 +2140,12 @@ int fts_test_get_uniformity_data(int *rawdata_linearity, u8 tx, u8 rx)
         while (times++ < FACTORY_TEST_RETRY) {
             sys_delay(FACTORY_TEST_DELAY);
 
-            ret = fts_test_read_reg(DEVIDE_MODE_ADDR, &val);
+            ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &val);
             if ((ret >= 0) && (val == 0x40)) {
                 break;
-            } else
-                FTS_TEST_DBG("reg%x=%x,retry:%d", DEVIDE_MODE_ADDR, val, times);
+            } else {
+                FTS_TEST_DBG("reg%x=%x,retry:%d", DIVIDE_MODE_ADDR, val, times);
+            }
         }
 
         if (times >= FACTORY_TEST_RETRY) {
@@ -1965,7 +2155,7 @@ int fts_test_get_uniformity_data(int *rawdata_linearity, u8 tx, u8 rx)
 
         ret = fts_test_write_reg(FACTORY_REG_LINE_ADDR, 0xAA);
         if (ret < 0) {
-            FTS_TEST_ERROR("wirte line/start addr fail\n");
+            FTS_TEST_ERROR("write line/start addr fail\n");
             continue;
         }
 
@@ -2205,7 +2395,7 @@ int fts_test_get_scap_raw(int *scap_raw, u8 tx, u8 rx, int *fwcheck)
     u8 data_type = 0;
     u8 val = 0;
 
-    FTS_TEST_INFO("\n============ Test Item: Scap Rawdata Test start\n");
+    FTS_TEST_INFO("====== Test Item: Scap Rawdata Test start\n");
     *fwcheck = 0;
 
     /* get waterproof channel select */
@@ -2236,7 +2426,7 @@ int fts_test_get_scap_raw(int *scap_raw, u8 tx, u8 rx, int *fwcheck)
     /* scan rawdata 2 times*/
     for (i = 0; i < 2; i++) {
         FTS_TEST_INFO("get rawdata,i=%d", i);
-        ret = fts_test_write_reg(DEVIDE_MODE_ADDR, 0xC0);
+        ret = fts_test_write_reg(DIVIDE_MODE_ADDR, 0xC0);
         if (ret < 0) {
             FTS_TEST_ERROR("write start scan mode fail\n");
             continue;
@@ -2245,11 +2435,12 @@ int fts_test_get_scap_raw(int *scap_raw, u8 tx, u8 rx, int *fwcheck)
         while (times++ < FACTORY_TEST_RETRY) {
             sys_delay(FACTORY_TEST_DELAY);
 
-            ret = fts_test_read_reg(DEVIDE_MODE_ADDR, &val);
+            ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &val);
             if ((ret >= 0) && (val == 0x40)) {
                 break;
-            } else
-                FTS_TEST_DBG("reg%x=%x,retry:%d", DEVIDE_MODE_ADDR, val, times);
+            } else {
+                FTS_TEST_DBG("reg%x=%x,retry:%d", DIVIDE_MODE_ADDR, val, times);
+            }
         }
 
         if (times >= FACTORY_TEST_RETRY) {
@@ -2268,7 +2459,7 @@ int fts_test_get_scap_raw(int *scap_raw, u8 tx, u8 rx, int *fwcheck)
         srawdata_tmp = scap_raw;
         ret = fts_test_write_reg(FACTORY_REG_LINE_ADDR, 0xAC);
         if (ret < 0) {
-            FTS_TEST_ERROR("wirte line/start addr fail\n");
+            FTS_TEST_ERROR("write line/start addr fail\n");
             goto exit;
         }
 
@@ -2290,7 +2481,7 @@ int fts_test_get_scap_raw(int *scap_raw, u8 tx, u8 rx, int *fwcheck)
         srawdata_tmp = scap_raw + node_num;
         ret = fts_test_write_reg(FACTORY_REG_LINE_ADDR, 0xAB);
         if (ret < 0) {
-            FTS_TEST_ERROR("wirte line/start addr fail\n");
+            FTS_TEST_ERROR("write line/start addr fail\n");
             goto exit;
         }
 
@@ -2312,7 +2503,7 @@ int fts_test_get_scap_raw(int *scap_raw, u8 tx, u8 rx, int *fwcheck)
         srawdata_tmp = scap_raw + node_num * 2;
         ret = fts_test_write_reg(FACTORY_REG_LINE_ADDR, 0xA0);
         if (ret < 0) {
-            FTS_TEST_ERROR("wirte line/start addr fail\n");
+            FTS_TEST_ERROR("write line/start addr fail\n");
             goto exit;
         }
 
@@ -2459,10 +2650,10 @@ int fts_test_get_noise(int *noise, u8 tx, u8 rx)
         }
     }
 
-    /* set frequecy high */
+    /* set frequency high */
     ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, 0x0);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("set frequecy fail,ret=%d\n", ret);
+        FTS_TEST_SAVE_ERR("set frequency fail,ret=%d\n", ret);
         goto exit;
     }
 
@@ -2612,10 +2803,10 @@ int fts_test_get_panel_differ(int *panel_differ, u8 tx, u8 rx)
         goto exit;
     }
 
-    /* set frequecy high */
+    /* set frequency high */
     ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, 0x81);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("set frequecy fail,ret=%d\n", ret);
+        FTS_TEST_SAVE_ERR("set frequency fail,ret=%d\n", ret);
         goto exit;
     }
 
@@ -2664,7 +2855,7 @@ int fts_test_get_panel_differ(int *panel_differ, u8 tx, u8 rx)
 
     for (i = 0; i < 3; i++) {
         FTS_TEST_INFO("get rawdata,i=%d", i);
-        ret = fts_test_write_reg(DEVIDE_MODE_ADDR, 0xC0);
+        ret = fts_test_write_reg(DIVIDE_MODE_ADDR, 0xC0);
         if (ret < 0) {
             FTS_TEST_ERROR("write start scan mode fail\n");
             continue;
@@ -2673,11 +2864,12 @@ int fts_test_get_panel_differ(int *panel_differ, u8 tx, u8 rx)
         while (times++ < FACTORY_TEST_RETRY) {
             sys_delay(FACTORY_TEST_DELAY);
 
-            ret = fts_test_read_reg(DEVIDE_MODE_ADDR, &val);
+            ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &val);
             if ((ret >= 0) && (val == 0x40)) {
                 break;
-            } else
-                FTS_TEST_DBG("reg%x=%x,retry:%d", DEVIDE_MODE_ADDR, val, times);
+            } else {
+                FTS_TEST_DBG("reg%x=%x,retry:%d", DIVIDE_MODE_ADDR, val, times);
+            }
         }
 
         if (times >= FACTORY_TEST_RETRY) {
@@ -2687,7 +2879,7 @@ int fts_test_get_panel_differ(int *panel_differ, u8 tx, u8 rx)
 
         ret = fts_test_write_reg(FACTORY_REG_LINE_ADDR, 0xAA);
         if (ret < 0) {
-            FTS_TEST_ERROR("wirte line/start addr fail\n");
+            FTS_TEST_ERROR("write line/start addr fail\n");
             continue;
         }
 

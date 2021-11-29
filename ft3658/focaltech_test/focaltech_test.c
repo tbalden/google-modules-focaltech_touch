@@ -269,21 +269,22 @@ int enter_work_mode(void)
 
     FTS_TEST_FUNC_ENTER();
 
-    ret = fts_test_read_reg(DEVIDE_MODE_ADDR, &mode);
+    ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &mode);
     if ((ret >= 0) && (0x00 == mode))
         return 0;
 
     for (i = 0; i < ENTER_WORK_FACTORY_RETRIES; i++) {
-        ret = fts_test_write_reg(DEVIDE_MODE_ADDR, 0x00);
+        ret = fts_test_write_reg(DIVIDE_MODE_ADDR, 0x00);
         if (ret >= 0) {
             sys_delay(FACTORY_TEST_DELAY);
             for (j = 0; j < 20; j++) {
-                ret = fts_test_read_reg(DEVIDE_MODE_ADDR, &mode);
+                ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &mode);
                 if ((ret >= 0) && (0x00 == mode)) {
                     FTS_TEST_INFO("enter work mode success");
                     return 0;
-                } else
+                } else {
                     sys_delay(FACTORY_TEST_DELAY);
+                }
             }
         }
 
@@ -306,22 +307,23 @@ int enter_factory_mode(void)
     int i = 0;
     int j = 0;
 
-    ret = fts_test_read_reg(DEVIDE_MODE_ADDR, &mode);
+    ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &mode);
     if ((ret >= 0) && (0x40 == mode))
         return 0;
 
     for (i = 0; i < ENTER_WORK_FACTORY_RETRIES; i++) {
-        ret = fts_test_write_reg(DEVIDE_MODE_ADDR, 0x40);
+        ret = fts_test_write_reg(DIVIDE_MODE_ADDR, 0x40);
         if (ret >= 0) {
             sys_delay(FACTORY_TEST_DELAY);
             for (j = 0; j < 20; j++) {
-                ret = fts_test_read_reg(DEVIDE_MODE_ADDR, &mode);
+                ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &mode);
                 if ((ret >= 0) && (0x40 == mode)) {
                     FTS_TEST_INFO("enter factory mode success");
                     sys_delay(200);
                     return 0;
-                } else
+                } else {
                     sys_delay(FACTORY_TEST_DELAY);
+                }
             }
         }
 
@@ -510,7 +512,7 @@ int start_scan(void)
         val = 0x01;
         finish_val = 0x00;
     } else {
-        addr = DEVIDE_MODE_ADDR;
+        addr = DIVIDE_MODE_ADDR;
         val = 0xC0;
         finish_val = 0x40;
     }
@@ -554,7 +556,7 @@ static int read_rawdata(
     /* set line addr or rawdata start addr */
     ret = fts_test_write_reg(off_addr, off_val);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("wirte line/start addr fail\n");
+        FTS_TEST_SAVE_ERR("write line/start addr fail\n");
         return ret;
     }
 
@@ -1057,10 +1059,10 @@ int get_rawdata_mc(u8 fre, u8 fir, int *rawdata)
         return -EINVAL;
     }
 
-    /* set frequecy high/low */
+    /* set frequency high/low */
     ret = fts_test_write_reg(FACTORY_REG_FRE_LIST, fre);
     if (ret < 0) {
-        FTS_TEST_SAVE_ERR("set frequecy fail,ret=%d\n", ret);
+        FTS_TEST_SAVE_ERR("set frequency fail,ret=%d\n", ret);
         return ret;
     }
 
@@ -2597,6 +2599,7 @@ static const struct file_operations proc_test_int_fops = {
 
 
 extern int fts_test_get_raw(int *raw, u8 tx, u8 rx);
+extern int fts_test_get_baseline(int *raw,int *base_raw, u8 tx, u8 rx);
 extern int fts_test_get_uniformity_data(int *rawdata_linearity, u8 tx, u8 rx);
 extern int fts_test_get_scap_raw(int *scap_raw, u8 tx, u8 rx, int *fwcheck);
 extern int fts_test_get_scap_cb(int *scap_cb, u8 tx, u8 rx, int *fwcheck);
@@ -2682,6 +2685,101 @@ static const struct proc_ops proc_test_raw_fops = {
 static const struct file_operations proc_test_raw_fops = {
     .owner  = THIS_MODULE,
     .open   = proc_test_raw_open,
+    .read   = seq_read,
+    .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+/* Baseline test */
+static int proc_test_baseline_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    int i = 0;
+    int node_num = 0;
+    u8 tx = 0;
+    u8 rx = 0;
+    int *raw;
+    int *base_raw;
+
+    ret = enter_factory_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter factory mode fails");
+        return ret;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
+    if (ret < 0) {
+        FTS_ERROR("read tx fails");
+        goto work_raw;
+    }
+
+    ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
+    if (ret < 0) {
+        FTS_ERROR("read rx fails");
+        goto work_raw;
+    }
+
+    node_num = tx * rx;
+    raw = fts_malloc(node_num * sizeof(int));
+    if (!raw) {
+        FTS_ERROR("malloc memory for raw fails");
+        ret = -ENOMEM;
+        goto work_raw;
+    }
+
+    base_raw = fts_malloc(node_num * sizeof(int));
+    if (!base_raw) {
+        FTS_ERROR("malloc memory for base_raw fails");
+        ret = -ENOMEM;
+        goto work_raw;
+    }
+
+    /* get baseline data */
+    fts_test_get_baseline(raw, base_raw, tx, rx);
+
+    /* output baseline data */
+    seq_printf(s, "     ");
+    for (i = 0; i < rx; i++)
+        seq_printf(s, " RX%02d ", (i + 1));
+
+    for (i = 0; i < node_num; i++) {
+        if ((i % rx) == 0)
+            seq_printf(s, "\nTX%02d:%5d,", (i / rx  + 1), (raw[i]-base_raw[i]));
+        else
+            seq_printf(s, "%5d,", (raw[i]-base_raw[i]));
+    }
+
+    seq_printf(s, "\n\n");
+    fts_free(base_raw);
+    fts_free(raw);
+
+work_raw:
+
+    ret = enter_work_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter work mode fails");
+    }
+
+    return 0;
+}
+
+static int proc_test_baseline_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_baseline_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_baseline_fops = {
+    .proc_open   = proc_test_baseline_open,
+    .proc_read   = seq_read,
+    .proc_lseek  = seq_lseek,
+    .proc_release  = single_release,
+};
+#else
+static const struct file_operations proc_test_baseline_fops = {
+    .owner  = THIS_MODULE,
+    .open   = proc_test_baseline_open,
     .read   = seq_read,
     .llseek = seq_lseek,
     .release = single_release,
@@ -3287,6 +3385,7 @@ struct proc_dir_entry *proc_test_sw_reset;
 
 struct proc_dir_entry *proc_test_int_pin;
 struct proc_dir_entry *proc_test_raw;
+struct proc_dir_entry *proc_test_baseline;
 struct proc_dir_entry *proc_test_uniformity;
 struct proc_dir_entry *proc_test_sraw;
 struct proc_dir_entry *proc_test_scb;
@@ -3344,6 +3443,13 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
         fts_proc_test_dir, &proc_test_raw_fops, ts_data);
     if (!proc_test_raw) {
         FTS_ERROR("create proc_test_raw entry fail");
+        return -ENOMEM;
+    }
+
+    proc_test_baseline = proc_create_data("Baseline", S_IRUSR,
+        fts_proc_test_dir, &proc_test_baseline_fops, ts_data);
+    if (!proc_test_raw) {
+        FTS_ERROR("create proc_test_baseline entry fail");
         return -ENOMEM;
     }
 
@@ -3417,6 +3523,9 @@ static void fts_free_test_procs(void)
 
     if (proc_test_raw)
         proc_remove(proc_test_raw);
+
+    if (proc_test_baseline)
+        proc_remove(proc_test_baseline);
 
     if (proc_test_uniformity)
         proc_remove(proc_test_uniformity);

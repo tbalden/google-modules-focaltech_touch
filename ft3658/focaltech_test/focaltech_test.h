@@ -78,7 +78,7 @@ Test Status
 #define FACTORY_TEST_DELAY                      18
 #define FACTORY_TEST_RETRY_DELAY                100
 
-#define DEVIDE_MODE_ADDR                        0x00
+#define DIVIDE_MODE_ADDR                        0x00
 #define REG_FW_MAJOR_VER                        0xA6
 #define REG_FW_MINOR_VER                        0xAD
 #define REG_VA_TOUCH_THR                        0x80

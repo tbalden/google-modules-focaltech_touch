@@ -105,7 +105,7 @@ static ssize_t fts_debug_write(
     if (buflen > PROC_BUF_SIZE) {
         writebuf = (u8 *)kzalloc(buflen * sizeof(u8), GFP_KERNEL);
         if (NULL == writebuf) {
-            FTS_ERROR("apk proc wirte buf zalloc fail");
+            FTS_ERROR("apk proc write buf zalloc fail");
             return -ENOMEM;
         }
     } else {
@@ -359,14 +359,14 @@ static int fts_debug_write(
     struct ftxxxx_proc *proc = &ts_data->proc;
 
     if (buflen <= 1) {
-        FTS_ERROR("apk proc wirte count(%d) fail", buflen);
+        FTS_ERROR("apk proc write count(%d) fail", buflen);
         return -EINVAL;
     }
 
     if (buflen > PROC_BUF_SIZE) {
         writebuf = (u8 *)kzalloc(buflen * sizeof(u8), GFP_KERNEL);
         if (NULL == writebuf) {
-            FTS_ERROR("apk proc wirte buf zalloc fail");
+            FTS_ERROR("apk proc write buf zalloc fail");
             return -ENOMEM;
         }
     } else {
