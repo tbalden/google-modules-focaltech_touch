@@ -195,6 +195,11 @@
 /*********** 1 to enable, 0 to disable ***********/
 
 /*
+ * show function flag info for GOOGLE debug
+ */
+#define GOOGLE_REPORT_MODE                      1
+
+/*
  * show debug log info
  * enable it for debug, disable it for release
  */

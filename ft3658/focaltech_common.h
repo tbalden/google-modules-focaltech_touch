@@ -115,7 +115,14 @@
 #define FTS_REG_MONITOR_CTRL                0x86
 #define FTS_REG_SENSE_ONOFF                 0xEA
 #define FTS_REG_IRQ_ONOFF                   0xEB
-
+#define FTS_REG_CUSTOMER_STATUS             0xB2    // follow _FTS_CUSTOMER_STATUS.
+                                                    // bit 0~1 : HOPPING
+                                                    // bit 2   : PALM
+                                                    // bit 3   : WATER
+                                                    // bit 4   : GRIP
+                                                    // bit 5   : GLOVE
+                                                    // bit 6   : STTW
+                                                    // bit 7   : LPWG
 #define FTS_SYSFS_ECHO_ON(buf)      (buf[0] == '1')
 #define FTS_SYSFS_ECHO_OFF(buf)     (buf[0] == '0')
 
