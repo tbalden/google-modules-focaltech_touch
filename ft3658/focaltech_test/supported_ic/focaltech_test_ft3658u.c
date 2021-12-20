@@ -2037,6 +2037,39 @@ test_err:
     return ret;
 }
 
+int fts_test_get_strength(u8 *base_raw, u8 tx, u8 rx)
+{
+    int ret = 0;
+    int self_cap_offset = 91;
+    int self_cap_len = 68;
+    int self_data_len = self_cap_len * 2 * 2;
+    int fast_num_len = self_cap_offset + 2 * (tx * rx) + self_data_len;
+    u8 id_cmd[4] = {0};
+
+    FTS_TEST_INFO("====== Test Item: strength test start\n");
+    id_cmd[0] = 0x01;
+
+    fts_test_write_reg(FTS_heatmap_REG_1E, 0x01);
+    fts_test_write_reg(FTS_heatmap_REG_ED, 0x00);
+    fts_test_write_reg(FTS_heatmap_REG_9E, 0x01);
+    sys_delay(500);
+
+    ret = fts_read(id_cmd, 1, base_raw, fast_num_len);
+
+    if (ret < 0) {
+        FTS_TEST_ERROR("get strength fail,ret=%d\n", ret);
+        goto test_err;
+    }
+
+    fts_test_write_reg(FTS_heatmap_REG_9E, 0x00);
+    sys_delay(10);
+    fts_test_write_reg(FTS_heatmap_REG_1E, 0x00);
+
+test_err:
+    FTS_TEST_INFO("====== Test Item: strength test end\n");
+    return ret;
+}
+
 int fts_test_get_uniformity_data(int *rawdata_linearity, u8 tx, u8 rx)
 {
     int ret = 0;

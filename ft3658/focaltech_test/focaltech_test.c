@@ -2600,6 +2600,7 @@ static const struct file_operations proc_test_int_fops = {
 
 extern int fts_test_get_raw(int *raw, u8 tx, u8 rx);
 extern int fts_test_get_baseline(int *raw,int *base_raw, u8 tx, u8 rx);
+extern int fts_test_get_strength(u8 *base_raw, u8 tx, u8 rx);
 extern int fts_test_get_uniformity_data(int *rawdata_linearity, u8 tx, u8 rx);
 extern int fts_test_get_scap_raw(int *scap_raw, u8 tx, u8 rx, int *fwcheck);
 extern int fts_test_get_scap_cb(int *scap_cb, u8 tx, u8 rx, int *fwcheck);
@@ -2782,6 +2783,168 @@ static const struct file_operations proc_test_baseline_fops = {
     .open   = proc_test_baseline_open,
     .read   = seq_read,
     .llseek = seq_lseek,
+    .release = single_release,
+};
+#endif
+
+/* Strength test for full size */
+/* transpose raw */
+static void transpose_raw(u8 *src, u8 *dist, int tx, int rx) {
+    int i = 0;
+    int j = 0;
+
+    for (i = 0; i < tx; i++) {
+        for (j = 0; j < rx; j++) {
+            dist[(j * tx + i) * 2] = src[(i * rx + j) * 2];
+            dist[(j * tx + i) * 2 + 1] = src[(i * rx + j) * 2 + 1];
+        }
+    }
+}
+
+static int proc_test_strength_show(struct seq_file *s, void *v)
+{
+    int ret = 0;
+    int i = 0;
+    int node_num = 0;
+    int self_node = 0;
+    int self_cap_num = 0;
+    int self_cap_num_off = 0;
+    int self_cap_offset = 91;
+    int self_cap_len = 68;
+    u8 tx = 16;
+    u8 rx = 34;
+    short base_result = 0;
+
+    u8 *base_raw;
+    u8 *trans_raw;
+    int base = 0;
+    int Fast_events_x = 0;
+    int Fast_events_y = 0;
+    u8 Fast_events_id = 0;
+
+    ret = enter_work_mode();
+    if (ret < 0) {
+        FTS_ERROR("enter work mode fails");
+        goto exit;
+    }
+
+    node_num = tx * rx;
+    self_node = tx + rx;
+    self_cap_num = self_cap_offset + node_num * 2;
+    self_cap_num_off = self_cap_num + self_cap_len * 2;
+
+    base_raw = fts_malloc(self_cap_num * sizeof(int));
+    if (!base_raw) {
+        FTS_ERROR("malloc memory for raw fails");
+        ret = -ENOMEM;
+        goto exit;
+    }
+
+    trans_raw = fts_malloc(node_num * 2 * sizeof(int));
+    if (!trans_raw) {
+        FTS_ERROR("malloc memory for transpose raw fails");
+        ret = -ENOMEM;
+        goto base_raw_err;
+    }
+
+    /* get strength data. */
+    ret = fts_test_get_strength(base_raw, tx, rx);
+    if (ret < 0) {
+        FTS_ERROR("get strength fails");
+        goto trans_raw_err;
+    }
+
+    /*---------Output touch point-----------*/
+    for (i = 0; i < base_raw[1]; i++) {
+         base = FTS_ONE_TCH_LEN * i;
+
+         Fast_events_x = ((base_raw[2 + base] & 0x0F) << 8) +
+                          (base_raw[3 + base] & 0xFF);
+         Fast_events_y = ((base_raw[4 + base] & 0x0F) << 8) +
+                          (base_raw[5 + base] & 0xFF);
+         Fast_events_id = (base_raw[4 + base]& 0xF0) >> 4;
+         seq_printf(s, "Finger ID= %d , X= %d, y=%d\n", Fast_events_id,
+                    Fast_events_x,Fast_events_y);
+    }
+
+    seq_printf(s, "     ");
+    /* transpose data buffer. */
+    transpose_raw(base_raw + self_cap_offset, trans_raw, tx, rx);
+    for (i = 0; i < tx; i++)
+        seq_printf(s, " TX%02d ", (i + 1));
+
+    for (i = 0; i < node_num; i++) {
+        base_result = (int)(trans_raw[(i * 2)] << 8) +
+                      (int)trans_raw[(i * 2) + 1];
+        if ((i % tx) == 0)
+            seq_printf(s, "\nRX%02d:%5d,", (i / tx + 1), base_result);
+        else
+            seq_printf(s, "%5d,", base_result);
+    }
+    /*---------END touch point-----------*/
+
+    /*---------output self of strength data-----------*/
+    seq_printf(s, "\n");
+    seq_printf(s, "Scap raw(proof on):\n");
+    for (i = 0; i < self_node; i++) {
+        base_result = (int)(base_raw[(i * 2) + self_cap_num] << 8) +
+                      (int)base_raw[(i * 2) + self_cap_num + 1];
+
+        if (i == 0)
+            seq_printf(s, "RX:");
+
+        if(i == rx) {
+            seq_printf(s, "\n");
+            seq_printf(s, "TX:");
+        }
+        seq_printf(s, "%d,", base_result);
+    }
+    seq_printf(s, "\n\n");
+    seq_printf(s, "Scap raw(proof off):\n");
+
+    for (i = 0; i < self_node; i++) {
+        base_result = (int)(base_raw[(i * 2) + self_cap_num_off] << 8) +
+                      (int)base_raw[(i * 2) + self_cap_num_off + 1];
+
+        if (i == 0)
+            seq_printf(s, "RX:");
+
+        if(i == rx){
+            seq_printf(s, "\n");
+            seq_printf(s, "TX:");
+        }
+        seq_printf(s, "%d,", base_result);
+    }
+
+    seq_printf(s, "\n\n");
+    /*---------END self of strength data-----------*/
+
+trans_raw_err:
+    fts_free(trans_raw);
+base_raw_err:
+    fts_free(base_raw);
+exit:
+    return ret;
+}
+
+static int proc_test_strength_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, proc_test_strength_show, PDE_DATA(inode));
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_test_strength_fops = {
+    .proc_open    = proc_test_strength_open,
+    .proc_read    = seq_read,
+    .proc_lseek   = seq_lseek,
+    .proc_release = single_release,
+};
+#else
+static const struct file_operations proc_test_strength_fops = {
+    .owner   = THIS_MODULE,
+    .open    = proc_test_strength_open,
+    .read    = seq_read,
+    .llseek  = seq_lseek,
     .release = single_release,
 };
 #endif
@@ -3386,6 +3549,7 @@ struct proc_dir_entry *proc_test_sw_reset;
 struct proc_dir_entry *proc_test_int_pin;
 struct proc_dir_entry *proc_test_raw;
 struct proc_dir_entry *proc_test_baseline;
+struct proc_dir_entry *proc_test_strength;
 struct proc_dir_entry *proc_test_uniformity;
 struct proc_dir_entry *proc_test_sraw;
 struct proc_dir_entry *proc_test_scb;
@@ -3450,6 +3614,13 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
         fts_proc_test_dir, &proc_test_baseline_fops, ts_data);
     if (!proc_test_raw) {
         FTS_ERROR("create proc_test_baseline entry fail");
+        return -ENOMEM;
+    }
+
+    proc_test_strength = proc_create_data("Strength", S_IRUSR,
+        fts_proc_test_dir, &proc_test_strength_fops, ts_data);
+    if (!proc_test_strength) {
+        FTS_ERROR("create proc_test_strength entry fail");
         return -ENOMEM;
     }
 
@@ -3544,6 +3715,9 @@ static void fts_free_test_procs(void)
 
     if (proc_test_panel_differ)
         proc_remove(proc_test_panel_differ);
+
+    if (proc_test_strength)
+        proc_remove(proc_test_strength);
 
     FTS_TEST_FUNC_EXIT();
 }

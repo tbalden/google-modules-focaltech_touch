@@ -115,6 +115,11 @@
 #define FTS_REG_MONITOR_CTRL                0x86
 #define FTS_REG_SENSE_ONOFF                 0xEA
 #define FTS_REG_IRQ_ONOFF                   0xEB
+
+#define FTS_heatmap_REG_1E                  0x1E
+#define FTS_heatmap_REG_ED                  0xED
+#define FTS_heatmap_REG_9E                  0x9E
+
 #define FTS_REG_CUSTOMER_STATUS             0xB2    // follow _FTS_CUSTOMER_STATUS.
                                                     // bit 0~1 : HOPPING
                                                     // bit 2   : PALM
