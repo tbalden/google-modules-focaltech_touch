@@ -112,6 +112,7 @@
 #define FTS_REG_MODULE_ID                   0xE3
 #define FTS_REG_LIC_VER                     0xE4
 #define FTS_REG_ESD_SATURATE                0xED
+#define FTS_REG_GESTURE_SWITCH              0xCF
 #define FTS_REG_MONITOR_CTRL                0x86
 #define FTS_REG_SENSE_ONOFF                 0xEA
 #define FTS_REG_IRQ_ONOFF                   0xEB
@@ -119,6 +120,14 @@
 #define FTS_heatmap_REG_1E                  0x1E
 #define FTS_heatmap_REG_ED                  0xED
 #define FTS_heatmap_REG_9E                  0x9E
+
+#define FTS_LPTW_REG_SET_E1                 0xE1
+#define FTS_LPTW_REG_SET_E2                 0xE2
+#define FTS_STTW_REG_SET_E3                 0xE3
+
+#define FTS_STTW_E3_BUF_LEN                 13
+#define FTS_LPTW_E2_BUF_LEN                 11
+#define FTS_LPTW_E1_BUF_LEN                 12
 
 #define FTS_REG_CUSTOMER_STATUS             0xB2    // follow _FTS_CUSTOMER_STATUS.
                                                     // bit 0~1 : HOPPING

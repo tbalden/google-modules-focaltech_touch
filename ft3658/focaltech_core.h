@@ -72,7 +72,7 @@
 #define FTS_ONE_TCH_LEN                     6
 #define FTS_TOUCH_DATA_LEN  (FTS_MAX_POINTS_SUPPORT * FTS_ONE_TCH_LEN + 3)
 
-#define FTS_GESTURE_POINTS_MAX              6
+#define FTS_GESTURE_POINTS_MAX              1
 #define FTS_GESTURE_DATA_LEN               (FTS_GESTURE_POINTS_MAX * 4 + 4)
 
 #define FTS_MAX_ID                          0x0A

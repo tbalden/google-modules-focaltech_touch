@@ -1082,12 +1082,14 @@ extern int int_test_has_interrupt;
 static irqreturn_t fts_irq_handler(int irq, void *data)
 {
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
-    struct fts_ts_data *ts_data = fts_data;;
+    struct fts_ts_data *ts_data = fts_data;
     if (fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_IRQ, true) < 0) {
-        /* Interrupt during bus suspend */
-        FTS_INFO("Skipping stray interrupt since bus is suspended(power_status: %d)\n",
-            ts_data->power_status);
-        return IRQ_HANDLED;
+        if (!ts_data->gesture_mode) {
+            /* Interrupt during bus suspend */
+            FTS_INFO("Skipping stray interrupt since bus is suspended(power_status: %d)\n",
+                ts_data->power_status);
+            return IRQ_HANDLED;
+        }
     }
 #endif
 #if defined(CONFIG_PM) && FTS_PATCH_COMERR_PM

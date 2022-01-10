@@ -1564,6 +1564,7 @@ static ssize_t proc_lpwg_read(struct file *filp, char __user *buff,
     int ret = 0;
     char tmpbuf[PROC_BUF_SIZE] = { 0 };
     u8 gesture_mode = 0;
+    u8 gesture_function = 0;
     loff_t pos = *ppos;
 
     if (pos)
@@ -1575,8 +1576,20 @@ static ssize_t proc_lpwg_read(struct file *filp, char __user *buff,
         return ret;
     }
 
-    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "lpwg mode:%s\n",
-        gesture_mode ? "Enable" : "Disable");
+    ret = fts_read_reg(FTS_REG_GESTURE_SWITCH, &gesture_function);
+    if (ret < 0) {
+        FTS_ERROR("read reg0xCF fails");
+        return ret;
+    }
+
+    if (gesture_function == 1)
+        cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "Gesture_mode: STTW\n");
+    else if (gesture_function == 2)
+        cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "Gesture_mode: LPTW\n");
+    else if (gesture_function == 3)
+        cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "Gesture_mode: STTW + LPTW\n");
+    else if (gesture_function == 0)
+        cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "Disable STTW and LPTW\n");
 
     if (copy_to_user(buff, tmpbuf, cnt)) {
         FTS_ERROR("copy to user error");
@@ -1612,12 +1625,46 @@ static ssize_t proc_lpwg_write(struct file *filp, const char __user *buff,
     }
 
     FTS_INFO("switch gesture mode to %d", gesture_mode);
-    ret = fts_write_reg(FTS_REG_GESTURE_EN, !!gesture_mode);
-    if (ret < 0) {
-        FTS_ERROR("write reg0xd0 fails");
-        return ret;
-    }
 
+    switch (gesture_mode) {
+    case 0:
+         ret = fts_write_reg(FTS_REG_GESTURE_SWITCH, 0);
+         if (ret < 0) {
+            FTS_ERROR("write reg 0xCF fails");
+            return ret;
+         }
+         break;
+
+    case 1:    //Single tap
+         ret = fts_write_reg(FTS_REG_GESTURE_SWITCH, 1);
+         if (ret < 0) {
+             FTS_ERROR("write reg 0xCF fails");
+             return ret;
+         }
+         FTS_INFO("switch gesture function to STTW");
+         break;
+
+    case 2:    //Long press
+         ret = fts_write_reg(FTS_REG_GESTURE_SWITCH, 2);
+         if (ret < 0) {
+             FTS_ERROR("write reg 0xCF fails");
+             return ret;
+         }
+         FTS_INFO("switch gesture function to LPTW");
+         break;
+
+    case 3:    //Single tap + Long press
+         ret = fts_write_reg(FTS_REG_GESTURE_SWITCH, 3);
+         if (ret < 0) {
+             FTS_ERROR("write reg 0xCF fails");
+             return ret;
+          }
+         FTS_INFO("switch gesture function to STTW + LPTW");
+         break;
+
+    default:
+         break;
+   }
     return count;
 }
 
@@ -2105,6 +2152,314 @@ static const struct file_operations proc_heatmap_onoff_fops = {
 };
 #endif
 
+static ssize_t proc_LPTW_setting_write(struct file *filp, const char __user *buff, size_t count, loff_t *ppos)
+{
+    int ret = 0;
+    char tmpbuf[PROC_BUF_SIZE] = {0};
+
+    int buflen = count;
+    int lptw_write_data[FTS_LPTW_E1_BUF_LEN] = {0};
+    u8  write_data[FTS_LPTW_E1_BUF_LEN] = {0};
+
+    u8 cmd[2] = {0};
+    u32 data_length = 0;
+    int i;
+
+    cmd[0] = FTS_LPTW_REG_SET_E1;
+    cmd[1] = FTS_LPTW_REG_SET_E2;
+
+    if (buflen >= PROC_BUF_SIZE) {
+        FTS_ERROR("proc write length(%d) fails", buflen);
+        return -EINVAL;
+    }
+
+    if (copy_from_user(tmpbuf, buff, buflen)) {
+        FTS_ERROR("copy from user error");
+        return -EFAULT;
+    }
+
+    ret = sscanf(tmpbuf, "%x%x%x%x%x%x%x%x%x%x%x%x", &lptw_write_data[0],
+        &lptw_write_data[1], &lptw_write_data[2], &lptw_write_data[3],
+        &lptw_write_data[4], &lptw_write_data[5], &lptw_write_data[6],
+        &lptw_write_data[7], &lptw_write_data[8], &lptw_write_data[9],
+        &lptw_write_data[10], &lptw_write_data[11]);
+
+    if(lptw_write_data[0] == FTS_LPTW_REG_SET_E1)
+        data_length = FTS_LPTW_E1_BUF_LEN;
+    else if (lptw_write_data[0] == FTS_LPTW_REG_SET_E2)
+        data_length = FTS_LPTW_E2_BUF_LEN;
+    else
+        data_length = 0;
+
+    for (i = 0; i < data_length; i++)
+        write_data[i] = (char)lptw_write_data[i];
+
+    if (data_length != 0){
+        ret=fts_write(write_data,data_length);
+        if (ret < 0) {
+            FTS_ERROR("write data to register E3/E2 fail");
+            return ret;
+        }
+    }
+
+ return count;
+}
+
+/*LPTW setting read*/
+static ssize_t proc_LPTW_setting_read(struct file *filp, char __user *buff, size_t count, loff_t *ppos)
+{
+    int cnt = 0;
+    int ret = 0;
+    char tmpbuf[PROC_BUF_SIZE] = {0};
+    u8 cmd[2] = {0};
+    int num_read_chars = 0;
+    loff_t pos = *ppos;
+    int buflen = count;
+    u8 *readbuf = NULL;
+    u8 read_tmpbuf[20] = {0};
+
+    if (pos)
+        return 0;
+
+    if (buflen <= 0) {
+        FTS_ERROR("apk proc read count(%d) fail", buflen);
+        return -EINVAL;
+    }
+
+    if (buflen > PROC_BUF_SIZE) {
+        readbuf = (u8 *)kzalloc(buflen * sizeof(u8), GFP_KERNEL);
+        if (NULL == readbuf) {
+            FTS_ERROR("apk proc buf zalloc fail");
+            return -ENOMEM;
+        }
+    } else {
+        readbuf = read_tmpbuf;
+    }
+
+    cmd[0] = FTS_LPTW_REG_SET_E1;
+    cmd[1] = FTS_LPTW_REG_SET_E2;
+
+    ret = fts_read(&cmd[0], 1, readbuf, 11);
+    if (ret < 0) {
+        FTS_ERROR("read reg_0xE1 fails");
+        goto proc_read_err;
+    }
+
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "****LPTW Gesture_part 1 setting:\n");
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "min_x :%4d\n",
+        ((readbuf[0] & 0x0F) << 8) + (readbuf[1] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "min_y :%4d\n",
+        ((readbuf[2] & 0x0F) << 8) + (readbuf[3] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "max_x :%4d\n",
+        ((readbuf[4] & 0x0F) << 8) + (readbuf[5] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "max_y :%4d\n",
+        ((readbuf[6] & 0x0F) << 8) + (readbuf[7] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "min_frame_count :%3d\n",(readbuf[8] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "jitter :%3d\n" ,(readbuf[9] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "max_touch_size :%3d\n\n", (readbuf[10] & 0xFF));
+
+    ret = fts_read(&cmd[1], 1, readbuf, 10);
+    if (ret < 0) {
+        FTS_ERROR("read reg_0xE1 fails");
+        goto proc_read_err;
+    }
+
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "****LPTW Gesture_part 2 & part 3 setting:\n");
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "marginal_min_x :%2d\n", (readbuf[0] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "marginal_max_x :%2d\n", (readbuf[1] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "marginal_min_y :%2d\n", (readbuf[2] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "marginal_max_y :%2d\n", (readbuf[3] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "monitor_channel_min_tx :%2d\n", (readbuf[4] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "monitor_channel_max_tx :%2d\n", (readbuf[5] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "monitor_channel_min_rx :%2d\n", (readbuf[6] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "monitor_channel_max_rx :%2d\n", (readbuf[7] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "min_node_count :%2d\n", (readbuf[8] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "motion_boundary :%2d\n", (readbuf[9] & 0xFF));
+
+    if (copy_to_user(buff, tmpbuf, cnt)) {
+        FTS_ERROR("copy to user error");
+        return -EFAULT;
+    }
+
+    *ppos = pos + cnt;
+    return cnt;
+
+proc_read_err:
+    if (copy_to_user(buff, readbuf, num_read_chars)) {
+        FTS_ERROR("copy to user error");
+        ret = -EFAULT;
+    }
+
+    if ((buflen > PROC_BUF_SIZE) && readbuf) {
+        kfree(readbuf);
+        readbuf = NULL;
+    }
+    return ret;
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops LPTW_setting_fops = {
+    .proc_read   = proc_LPTW_setting_read,
+    .proc_write  = proc_LPTW_setting_write,
+};
+#else
+static const struct file_operations LPTW_setting_fops = {
+    .owner  = THIS_MODULE,
+    .read   = proc_LPTW_setting_read,
+    .write  = proc_LPTW_setting_write,
+};
+#endif
+
+static ssize_t proc_STTW_setting_write(struct file *filp, const char __user *buff, size_t count, loff_t *ppos)
+{
+    int ret = 0;
+    char tmpbuf[PROC_BUF_SIZE] = {0};
+    int buflen = count;
+    int sttw_write_data[FTS_STTW_E3_BUF_LEN] = {0};
+    u8  write_data[FTS_STTW_E3_BUF_LEN] = {0};
+
+    u8 cmd[2] = {0};
+    u8 data_length = 0;
+    int i = 0;
+    cmd[0] = FTS_STTW_REG_SET_E3;
+
+    if (buflen >= PROC_BUF_SIZE) {
+        FTS_ERROR("proc write length(%d) fails", buflen);
+        return -EINVAL;
+    }
+
+    if (copy_from_user(tmpbuf, buff, buflen)) {
+        FTS_ERROR("copy from user error");
+        return -EFAULT;
+    }
+
+    ret = sscanf(tmpbuf, "%x%x%x%x%x%x%x%x%x%x%x%x%x", &sttw_write_data[0],
+        &sttw_write_data[1], &sttw_write_data[2], &sttw_write_data[3],
+        &sttw_write_data[4], &sttw_write_data[5], &sttw_write_data[6],
+        &sttw_write_data[7], &sttw_write_data[8], &sttw_write_data[9],
+        &sttw_write_data[10], &sttw_write_data[11], &sttw_write_data[12]);
+
+    if (sttw_write_data[0] == FTS_STTW_REG_SET_E3) {
+        data_length = FTS_STTW_E3_BUF_LEN;
+        for (i = 0; i < data_length; i++)
+            write_data[i] = (char)sttw_write_data[i];
+
+        ret = fts_write(write_data,data_length);
+        if (ret < 0) {
+            FTS_ERROR("write data to register E3 fail");
+            return ret;
+        }
+    }
+
+ return count;
+}
+
+/*STTW setting read*/
+static ssize_t proc_STTW_setting_read(struct file *filp, char __user *buff, size_t count, loff_t *ppos)
+{
+    int cnt = 0;
+    int ret = 0;
+    char tmpbuf[PROC_BUF_SIZE] = {0};
+    u8 cmd[2] = {0};
+    int num_read_chars = 0;
+    loff_t pos = *ppos;
+    int buflen = count;
+    u8 *readbuf = NULL;
+    u8 read_tmpbuf[20] = {0};
+
+    if (pos)
+        return 0;
+
+    if (buflen <= 0) {
+        FTS_ERROR("apk proc read count(%d) fail", buflen);
+        return -EINVAL;
+    }
+
+    if (buflen > PROC_BUF_SIZE) {
+        readbuf = (u8 *)kzalloc(buflen * sizeof(u8), GFP_KERNEL);
+        if (NULL == readbuf) {
+            FTS_ERROR("apk proc buf zalloc fail");
+            return -ENOMEM;
+        }
+    } else {
+        readbuf = read_tmpbuf;
+    }
+
+    cmd[0] = FTS_STTW_REG_SET_E3;
+
+    ret = fts_read(&cmd[0], 1, readbuf, 12);
+    if (ret < 0) {
+        FTS_ERROR("read reg_0xE3 fails");
+        goto proc_read_err;
+    }
+
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "==STTW Gesture setting:==\n");
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "min_x :%4d\n",((readbuf[0] & 0x0F) << 8) +(readbuf[1] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "min_y :%4d\n",((readbuf[2] & 0x0F) << 8) +(readbuf[3] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "max_x :%4d\n",((readbuf[4] & 0x0F) << 8) +(readbuf[5] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "max_y :%4d\n",((readbuf[6] & 0x0F) << 8) +(readbuf[7] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "min_frame_count :%3d\n", (readbuf[8] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "max_frame_count :%3d\n", (readbuf[9] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "jitter :%3d\n",(readbuf[10] & 0xFF));
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "tap_max_touch_size :%3d\n", (readbuf[11] & 0xFF));
+
+    if (copy_to_user(buff, tmpbuf, cnt)) {
+        FTS_ERROR("copy to user error");
+        return -EFAULT;
+    }
+
+    *ppos = pos + cnt;
+    return cnt;
+
+proc_read_err:
+    if (copy_to_user(buff, readbuf, num_read_chars)) {
+        FTS_ERROR("copy to user error");
+        ret = -EFAULT;
+    }
+
+    if ((buflen > PROC_BUF_SIZE) && readbuf) {
+        kfree(readbuf);
+        readbuf = NULL;
+    }
+    return ret;
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops STTW_setting_fops = {
+    .proc_read   = proc_STTW_setting_read,
+    .proc_write  = proc_STTW_setting_write,
+};
+#else
+static const struct file_operations STTW_setting_fops = {
+    .owner  = THIS_MODULE,
+    .read   = proc_STTW_setting_read,
+    .write  = proc_STTW_setting_write,
+};
+#endif
+
 struct proc_dir_entry *proc_fw_update;
 struct proc_dir_entry *proc_scan_modes;
 struct proc_dir_entry *proc_touch_mode;
@@ -2115,6 +2470,8 @@ struct proc_dir_entry *proc_grip;
 struct proc_dir_entry *proc_sense_onoff;
 struct proc_dir_entry *proc_irq_onoff;
 struct proc_dir_entry *proc_heatmap_onoff;
+struct proc_dir_entry *proc_LPTW_setting;
+struct proc_dir_entry *proc_STTW_setting;
 
 static int fts_create_ctrl_procs(struct fts_ts_data *ts_data)
 {
@@ -2200,7 +2557,23 @@ static int fts_create_ctrl_procs(struct fts_ts_data *ts_data)
         return ret;
     }
 
-    FTS_INFO("create test procs succeeds");
+    proc_LPTW_setting = proc_create_data("LPTW_setting", S_IRUSR|S_IWUSR,
+        ts_data->proc_touch_entry, &LPTW_setting_fops, ts_data);
+    if (!proc_LPTW_setting) {
+        FTS_ERROR("create proc_LPTW_settingentry fail");
+        ret = -ENOMEM;
+        return ret;
+    }
+
+    proc_STTW_setting = proc_create_data("STTW_setting", S_IRUSR|S_IWUSR,
+        ts_data->proc_touch_entry, &STTW_setting_fops, ts_data);
+    if (!proc_STTW_setting) {
+        FTS_ERROR("create proc_STTW_settingentry fail");
+        ret = -ENOMEM;
+        return ret;
+    }
+
+    FTS_INFO("create control procs succeeds");
     return 0;
 }
 
@@ -2235,6 +2608,12 @@ static void fts_free_ctrl_procs(void)
 
     if (proc_heatmap_onoff)
         proc_remove(proc_heatmap_onoff);
+
+    if (proc_LPTW_setting)
+        proc_remove(proc_LPTW_setting);
+
+    if (proc_STTW_setting)
+        proc_remove(proc_STTW_setting);
 }
 
 int fts_create_sysfs(struct fts_ts_data *ts_data)

@@ -57,6 +57,9 @@
 #define GESTURE_UP                              0x22
 #define GESTURE_DOWN                            0x23
 #define GESTURE_DOUBLECLICK                     0x24
+#define GESTURE_SINGLECLICK                     0x25
+#define GESTURE_FOD                             0x26
+#define GESTURE_FOD_UP                          0x27
 #define GESTURE_O                               0x30
 #define GESTURE_W                               0x31
 #define GESTURE_M                               0x32
@@ -252,8 +255,17 @@ static void fts_gesture_report(struct input_dev *input_dev, int gesture_id)
     case GESTURE_Z:
         gesture = KEY_GESTURE_Z;
         break;
-    case  GESTURE_C:
+    case GESTURE_C:
         gesture = KEY_GESTURE_C;
+        break;
+    case GESTURE_SINGLECLICK:
+        gesture = KEY_GESTURE_UP;
+        break;
+    case GESTURE_FOD:
+        gesture = KEY_GESTURE_DOWN;
+        break;
+    case GESTURE_FOD_UP:
+        gesture = KEY_GESTURE_UP;
         break;
     default:
         gesture = -1;
@@ -308,14 +320,13 @@ int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data)
         return 1;
     }
 
-
     /* init variable before read gesture point */
     memset(gesture->coordinate_x, 0, FTS_GESTURE_POINTS_MAX * sizeof(u16));
     memset(gesture->coordinate_y, 0, FTS_GESTURE_POINTS_MAX * sizeof(u16));
     gesture->gesture_id = buf[2];
     gesture->point_num = buf[3];
-    FTS_DEBUG("gesture_id=%d, point_num=%d",
-              gesture->gesture_id, gesture->point_num);
+    FTS_DEBUG("gesture_id=0x%x, point_num=%d",
+        gesture->gesture_id, gesture->point_num);
 
     /* save point data,max:6 */
     for (i = 0; i < FTS_GESTURE_POINTS_MAX; i++) {
@@ -324,6 +335,8 @@ int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data)
                                          + buf[1 + index]);
         gesture->coordinate_y[i] = (u16)(((buf[2 + index] & 0x0F) << 8)
                                          + buf[3 + index]);
+        FTS_DEBUG("coordinate_x = %d , coordinate_y = %d\n",
+            gesture->coordinate_x[i], gesture->coordinate_y[i]);
     }
 
     /* report gesture to OS */
