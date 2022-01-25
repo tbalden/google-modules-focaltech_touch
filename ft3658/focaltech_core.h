@@ -151,6 +151,8 @@ struct ts_event {
     int flag;   /* touch event flag: 0 -- down; 1-- up; 2 -- contact */
     int id;     /*touch ID */
     int area;
+    int major;
+    int minor;
 };
 
 struct pen_event {

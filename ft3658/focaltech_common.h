@@ -124,6 +124,7 @@
 #define FTS_LPTW_REG_SET_E1                 0xE1
 #define FTS_LPTW_REG_SET_E2                 0xE2
 #define FTS_STTW_REG_SET_E3                 0xE3
+#define FTS_GESTURE_MAJOR_MINOR             0xE5
 
 #define FTS_STTW_E3_BUF_LEN                 13
 #define FTS_LPTW_E2_BUF_LEN                 11

@@ -88,6 +88,8 @@ struct fts_gesture_st {
     u8 point_num;
     u16 coordinate_x[FTS_GESTURE_POINTS_MAX];
     u16 coordinate_y[FTS_GESTURE_POINTS_MAX];
+    u8 Gesture_major[FTS_GESTURE_POINTS_MAX];
+    u8 Gesture_minor[FTS_GESTURE_POINTS_MAX];
 };
 
 /*****************************************************************************
@@ -303,6 +305,10 @@ int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data)
     u8 buf[FTS_GESTURE_DATA_LEN] = { 0 };
     struct input_dev *input_dev = ts_data->input_dev;
     struct fts_gesture_st *gesture = &fts_gesture_data;
+    u8 majorminor_buf[8 * FTS_GESTURE_POINTS_MAX] = { 0 };
+    u8 cmd[2] = { 0 };
+
+    cmd[0] = FTS_GESTURE_MAJOR_MINOR;
 
     if (!ts_data->suspended || !ts_data->gesture_mode) {
         return 1;
@@ -327,6 +333,7 @@ int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data)
     gesture->point_num = buf[3];
     FTS_DEBUG("gesture_id=0x%x, point_num=%d",
         gesture->gesture_id, gesture->point_num);
+    fts_read(cmd, 1, majorminor_buf, 8 * FTS_GESTURE_POINTS_MAX);
 
     /* save point data,max:6 */
     for (i = 0; i < FTS_GESTURE_POINTS_MAX; i++) {
@@ -335,12 +342,26 @@ int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data)
                                          + buf[1 + index]);
         gesture->coordinate_y[i] = (u16)(((buf[2 + index] & 0x0F) << 8)
                                          + buf[3 + index]);
-        FTS_DEBUG("coordinate_x = %d , coordinate_y = %d\n",
-            gesture->coordinate_x[i], gesture->coordinate_y[i]);
+
+        gesture->Gesture_major[i] = majorminor_buf[8 * i + 4];
+        gesture->Gesture_minor[i] = majorminor_buf[8 * i + 5];
+
+        FTS_DEBUG("x=%d ,y=%d, major=%d, minor=%d\n",
+            gesture->coordinate_x[i], gesture->coordinate_y[i],
+            gesture->Gesture_major[i], gesture->Gesture_minor[i]);
     }
 
     /* report gesture to OS */
     fts_gesture_report(input_dev, gesture->gesture_id);
+
+    for(i = 0; i < gesture->point_num; i++) {
+        input_report_abs(input_dev, ABS_MT_POSITION_X, gesture->coordinate_x[i]);
+        input_report_abs(input_dev, ABS_MT_POSITION_Y, gesture->coordinate_y[i]);
+        input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, gesture->Gesture_major[i]);
+        input_report_abs(input_dev, ABS_MT_TOUCH_MINOR, gesture->Gesture_minor[i]);
+        input_sync(input_dev);
+    }
+
     return 0;
 }
 
