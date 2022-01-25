@@ -1475,11 +1475,12 @@ static int fts_power_source_suspend(struct fts_ts_data *ts_data)
 {
     int ret = 0;
 
+#if !defined(FTS_AOC_GESTURE_EN)
     ret = fts_power_source_ctrl(ts_data, DISABLE);
     if (ret < 0) {
         FTS_ERROR("power off fail, ret=%d", ret);
     }
-
+#endif
 #if FTS_PINCTRL_EN
     fts_pinctrl_select_suspend(ts_data);
 #endif
@@ -1493,12 +1494,12 @@ static int fts_power_source_resume(struct fts_ts_data *ts_data)
 #if FTS_PINCTRL_EN
     fts_pinctrl_select_normal(ts_data);
 #endif
-
+#if !defined(FTS_AOC_GESTURE_EN)
     ret = fts_power_source_ctrl(ts_data, ENABLE);
     if (ret < 0) {
         FTS_ERROR("power on fail, ret=%d", ret);
     }
-
+#endif
     return ret;
 }
 #endif /* FTS_POWER_SOURCE_CUST_EN */
@@ -2312,12 +2313,14 @@ static int fts_ts_suspend(struct device *dev)
     if (ts_data->gesture_mode) {
         fts_gesture_suspend(ts_data);
     } else {
+        /* Disable irq */
         fts_irq_disable();
-
-        FTS_INFO("make TP enter into sleep mode");
+#if !defined(FTS_AOC_GESTURE_EN)
+        FTS_DEBUG("make TP enter into sleep mode");
         ret = fts_write_reg(FTS_REG_POWER_MODE, FTS_REG_POWER_MODE_SLEEP);
         if (ret < 0)
             FTS_ERROR("set TP to sleep mode fail, ret=%d", ret);
+#endif
 
         if (!ts_data->ic_info.is_incell) {
 #if FTS_POWER_SOURCE_CUST_EN
