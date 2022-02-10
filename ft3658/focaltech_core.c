@@ -55,7 +55,9 @@
 /*****************************************************************************
 * Private constant and macro definitions using #define
 *****************************************************************************/
+#if GOOGLE_REPORT_MODE
 const short int hopping_freq[3] = {277, 237, 112};
+#endif
 #define FTS_DRIVER_NAME                     "fts_ts"
 #define FTS_DRIVER_PEN_NAME                 "fts_ts,pen"
 #define INTERVAL_READ_REG                   200  /* unit:ms */
@@ -74,7 +76,9 @@ static int register_panel_bridge(struct fts_ts_data *ts);
 static void unregister_panel_bridge(struct drm_bridge *bridge);
 #endif
 
+#if GOOGLE_REPORT_MODE
 static u8 current_host_status;
+#endif
 static int fts_ts_suspend(struct device *dev);
 static int fts_ts_resume(struct device *dev);
 
@@ -737,6 +741,14 @@ static int fts_read_touchdata(struct fts_ts_data *data)
     return 0;
 }
 
+static int get_work_mode(void) {
+    int ret = 0;
+    u8 mode = 0;
+    ret = fts_read_reg(FTS_REG_WORKMODE, &mode);
+    if (ret == 0)
+        return mode;
+    return ret;
+}
 
 static int fts_read_parse_touchdata(struct fts_ts_data *data)
 {
@@ -747,9 +759,11 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
     struct ts_event *events = data->events;
     int max_touch_num = data->pdata->max_touch_number;
     u8 *buf = data->point_buf;
-
+#if GOOGLE_REPORT_MODE
     u8 get_regB2_status = 0;
     u8 check_regB2_status = 0;
+    u8 work_mode;
+#endif
     ret = fts_read_touchdata(data);
     if (ret) {
         return ret;
@@ -763,63 +777,65 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
 #endif
 
 #if GOOGLE_REPORT_MODE
-    fts_read_reg(FTS_REG_CUSTOMER_STATUS, &get_regB2_status);
-    check_regB2_status = get_regB2_status ^ current_host_status ;
-
-    if (check_regB2_status) { // current_status is different with previous_status
-        for(i = STATUS_HOPPING; i < STATUS_CNT_END; i++) {
-            switch (i) {
-                case STATUS_HOPPING : // Hopping result
-                    if (check_regB2_status & 0x03) {
-                        FTS_DEBUG("-------Hopping from %dKhz to %dKhz\n",
-                            hopping_freq[current_host_status & 0x03],
-                            hopping_freq[get_regB2_status & 0x03]);
-                    }
-                    break;
-                case STATUS_PALM : // Palm result
-                    if (check_regB2_status & (1 << i)) {
-                        FTS_DEBUG("-------PALM mode = %s\n",
-                            (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                    }
-                    break;
-                case STATUS_WATER : // Water result
-                    if (check_regB2_status & (1 << i)) {
-                        FTS_DEBUG("-------WATER mode = %s\n",
-                            (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                    }
-                    break;
-                case STATUS_GRIP : // Grip result
-                    if( check_regB2_status & (1 << i)) {
-                        FTS_DEBUG("-------GRIP mode = %s\n",
-                            (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                    }
-                    break;
-                case STATUS_GLOVE : // Glove result
-                    if( check_regB2_status & (1 << i)) {
-                        FTS_DEBUG("-------GlOVE mode = %s\n",
-                            (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                    }
-                    break;
-                case STATUS_STTW : // STTW result
-                    if( check_regB2_status & (1 << i)) {
-                        FTS_DEBUG("-------STTW = %s\n",
-                            (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                    }
-                    break;
-                case STATUS_LPTW : // LPTW result
-                    if( check_regB2_status & (1 << i)) {
-                        FTS_DEBUG("-------LPTW = %s\n",
-                            (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                    }
-                    break;
-                default:
-                     break;
+    work_mode = get_work_mode();
+    if (work_mode >= 0 && work_mode == FTS_REG_WORKMODE_WORK_VALUE ) {
+        fts_read_reg(FTS_REG_CUSTOMER_STATUS, &get_regB2_status);
+        check_regB2_status = get_regB2_status ^ current_host_status ;
+        if (check_regB2_status) { // current_status is different with previous_status
+            for(i = STATUS_HOPPING; i < STATUS_CNT_END; i++) {
+                switch (i) {
+                    case STATUS_HOPPING : // Hopping result
+                        if (check_regB2_status & 0x03) {
+                            FTS_DEBUG("-------Hopping from %dKhz to %dKhz\n",
+                                hopping_freq[current_host_status & 0x03],
+                                hopping_freq[get_regB2_status & 0x03]);
+                        }
+                        break;
+                    case STATUS_PALM : // Palm result
+                        if (check_regB2_status & (1 << i)) {
+                            FTS_DEBUG("-------PALM mode = %s\n",
+                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
+                        }
+                        break;
+                    case STATUS_WATER : // Water result
+                        if (check_regB2_status & (1 << i)) {
+                            FTS_DEBUG("-------WATER mode = %s\n",
+                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
+                        }
+                        break;
+                    case STATUS_GRIP : // Grip result
+                        if( check_regB2_status & (1 << i)) {
+                            FTS_DEBUG("-------GRIP mode = %s\n",
+                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
+                        }
+                        break;
+                    case STATUS_GLOVE : // Glove result
+                        if( check_regB2_status & (1 << i)) {
+                            FTS_DEBUG("-------GlOVE mode = %s\n",
+                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
+                        }
+                        break;
+                    case STATUS_STTW : // STTW result
+                        if( check_regB2_status & (1 << i)) {
+                            FTS_DEBUG("-------STTW = %s\n",
+                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
+                        }
+                        break;
+                    case STATUS_LPTW : // LPTW result
+                        if( check_regB2_status & (1 << i)) {
+                            FTS_DEBUG("-------LPTW = %s\n",
+                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
+                        }
+                        break;
+                    default:
+                        break;
+                }
             }
-        }
-        current_host_status = get_regB2_status;
+            current_host_status = get_regB2_status;
 
-        if(buf[2] == 0 )
-            return -EIO;
+            if (buf[2] == 0)
+                return -EIO;
+        }
     }
 #endif
     data->point_num = buf[FTS_TOUCH_POINT_NUM] & 0x0F;
