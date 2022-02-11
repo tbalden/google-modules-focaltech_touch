@@ -61,6 +61,7 @@
 #include <linux/sched.h>
 #include <linux/kthread.h>
 #include <linux/dma-mapping.h>
+#include <linux/pm_qos.h>
 #include "focaltech_common.h"
 
 /*****************************************************************************
@@ -182,6 +183,7 @@ struct fts_ts_data {
     struct delayed_work prc_work;
     struct work_struct resume_work;
     struct work_struct suspend_work;
+    struct pm_qos_request pm_qos_req;
     struct ftxxxx_proc proc;
     spinlock_t irq_lock;
     struct mutex report_mutex;

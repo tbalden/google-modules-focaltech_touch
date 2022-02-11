@@ -1126,7 +1126,9 @@ static irqreturn_t fts_irq_handler(int irq, void *data)
     }
 #endif
     int_test_has_interrupt++;
+    cpu_latency_qos_update_request(&ts_data->pm_qos_req, 100 /* usec */);
     fts_irq_read_report();
+    cpu_latency_qos_update_request(&ts_data->pm_qos_req, PM_QOS_DEFAULT_VALUE);
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
     fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_IRQ, false);
 #endif
@@ -2116,6 +2118,8 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         FTS_ERROR("init esd check fail");
     }
 #endif
+    /* init pm_qos before interrupt registered. */
+    cpu_latency_qos_add_request(&ts_data->pm_qos_req, PM_QOS_DEFAULT_VALUE);
 
     ret = fts_irq_registration(ts_data);
     if (ret) {
@@ -2194,6 +2198,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     return 0;
 
 err_irq_req:
+    cpu_latency_qos_remove_request(&ts_data->pm_qos_req);
 #if FTS_POWER_SOURCE_CUST_EN
 err_power_init:
     fts_power_source_exit(ts_data);
@@ -2269,6 +2274,8 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 
     if (ts_data->ts_workqueue)
         destroy_workqueue(ts_data->ts_workqueue);
+
+    cpu_latency_qos_remove_request(&ts_data->pm_qos_req);
 
 #if defined(CONFIG_FB)
     if (fb_unregister_client(&ts_data->fb_notif))
