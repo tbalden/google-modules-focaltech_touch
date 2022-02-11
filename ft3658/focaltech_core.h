@@ -220,6 +220,9 @@ struct fts_ts_data {
     int key_state;
     int touch_point;
     int point_num;
+    ktime_t timestamp; /* Time that the event was first received from the
+                        * touch IC, acquired during hard interrupt, in
+                        * CLOCK_MONOTONIC */
     struct proc_dir_entry *proc_touch_entry;
     struct regulator *avdd;
     struct regulator *dvdd;

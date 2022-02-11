@@ -581,7 +581,7 @@ static int fts_input_report_b(struct fts_ts_data *data)
             input_report_key(data->input_dev, BTN_TOUCH, 1);
         }
     }
-
+    input_set_timestamp(data->input_dev, data->timestamp);
     input_sync(data->input_dev);
     return 0;
 }
@@ -646,7 +646,7 @@ static int fts_input_report_a(struct fts_ts_data *data)
             input_report_key(data->input_dev, BTN_TOUCH, 1);
         }
     }
-
+    input_set_timestamp(data->input_dev, data->timestamp);
     input_sync(data->input_dev);
     return 0;
 }
@@ -1097,6 +1097,14 @@ static void unregister_panel_bridge(struct drm_bridge *bridge)
 }
 #endif
 
+static irqreturn_t fts_irq_ts(int irq, void *data)
+{
+    struct fts_ts_data *ts_data = data;
+
+    ts_data->timestamp = ktime_get();
+    return IRQ_WAKE_THREAD;
+}
+
 extern int int_test_has_interrupt;
 static irqreturn_t fts_irq_handler(int irq, void *data)
 {
@@ -1143,7 +1151,7 @@ static int fts_irq_registration(struct fts_ts_data *ts_data)
     ts_data->irq = gpio_to_irq(pdata->irq_gpio);
     pdata->irq_gpio_flags = IRQF_TRIGGER_FALLING | IRQF_ONESHOT;
     FTS_INFO("irq:%d, flag:%x", ts_data->irq, pdata->irq_gpio_flags);
-    ret = request_threaded_irq(ts_data->irq, NULL, fts_irq_handler,
+    ret = request_threaded_irq(ts_data->irq, fts_irq_ts, fts_irq_handler,
                                pdata->irq_gpio_flags,
                                FTS_DRIVER_NAME, ts_data);
 
