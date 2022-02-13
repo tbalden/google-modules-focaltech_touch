@@ -2629,6 +2629,11 @@ int fts_create_sysfs(struct fts_ts_data *ts_data)
         FTS_INFO("[EX]: sysfs_create_group() succeeded!!");
     }
 
+    ts_data->proc_touch_entry = proc_mkdir("focaltech_touch", NULL);
+    if (!ts_data->proc_touch_entry) {
+        FTS_ERROR("create proc/focaltech_touch fails");
+    }
+
     ret = fts_create_ctrl_procs(ts_data);
     if (ret) {
         FTS_ERROR("Create ctrl procs fails");
@@ -2641,5 +2646,7 @@ int fts_remove_sysfs(struct fts_ts_data *ts_data)
 {
     sysfs_remove_group(&ts_data->dev->kobj, &fts_attribute_group);
     fts_free_ctrl_procs();
+    if (ts_data->proc_touch_entry)
+        proc_remove(fts_data->proc_touch_entry);
     return 0;
 }

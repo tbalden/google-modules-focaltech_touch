@@ -2081,11 +2081,6 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         goto err_irq_req;
     }
 
-    ts_data->proc_touch_entry = proc_mkdir("focaltech_touch", NULL);
-    if (!ts_data->proc_touch_entry) {
-        FTS_ERROR("create proc/focaltech_touch fails");
-    }
-
     ret = fts_create_apk_debug_channel(ts_data);
     if (ret) {
         FTS_ERROR("create apk debug node fail");

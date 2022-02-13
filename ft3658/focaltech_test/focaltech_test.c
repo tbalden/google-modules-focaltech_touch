@@ -3764,6 +3764,8 @@ int fts_test_exit(struct fts_ts_data *ts_data)
     FTS_TEST_FUNC_ENTER();
 
     fts_free_test_procs();
+    if (fts_proc_test_dir)
+        proc_remove(fts_proc_test_dir);
     sysfs_remove_group(&ts_data->dev->kobj, &fts_test_attribute_group);
     fts_free(fts_ftest);
     FTS_TEST_FUNC_EXIT();
