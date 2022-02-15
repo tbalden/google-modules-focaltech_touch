@@ -2316,6 +2316,19 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
     return 0;
 }
 
+void fts_set_heatmap_mode(bool en)
+{
+    if (en == 1){
+        fts_write_reg(FTS_REG_HEATMAP_1E, 0x01);
+        fts_write_reg(FTS_REG_HEATMAP_ED, 0x00);
+        fts_write_reg(FTS_REG_HEATMAP_9E, 0x01);
+    } else {
+        fts_write_reg(FTS_REG_HEATMAP_9E, 0x00);
+        fts_write_reg(FTS_REG_HEATMAP_1E, 0x00);
+    }
+    FTS_DEBUG("%s heatmap.\n", en ? "Enable" : "Disable");
+}
+
 static int fts_ts_suspend(struct device *dev)
 {
     int ret = 0;
@@ -2334,6 +2347,10 @@ static int fts_ts_suspend(struct device *dev)
 
 #if FTS_ESDCHECK_EN
     fts_esdcheck_suspend();
+#endif
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    fts_set_heatmap_mode(false);
 #endif
 
     if (ts_data->gesture_mode) {
@@ -2357,7 +2374,6 @@ static int fts_ts_suspend(struct device *dev)
 #endif
         }
     }
-
     fts_release_all_finger();
     ts_data->suspended = true;
     FTS_FUNC_EXIT();
@@ -2395,7 +2411,9 @@ static int fts_ts_resume(struct device *dev)
     } else {
         fts_irq_enable();
     }
-
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    fts_set_heatmap_mode(true);
+#endif
     ts_data->suspended = false;
     FTS_FUNC_EXIT();
     return 0;

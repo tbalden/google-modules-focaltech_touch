@@ -2049,9 +2049,7 @@ int fts_test_get_strength(u8 *base_raw, u8 tx, u8 rx)
     FTS_TEST_INFO("====== Test Item: strength test start\n");
     id_cmd[0] = 0x01;
 
-    fts_test_write_reg(FTS_heatmap_REG_1E, 0x01);
-    fts_test_write_reg(FTS_heatmap_REG_ED, 0x00);
-    fts_test_write_reg(FTS_heatmap_REG_9E, 0x01);
+    fts_set_heatmap_mode(true);
     sys_delay(500);
 
     ret = fts_read(id_cmd, 1, base_raw, fast_num_len);
@@ -2061,9 +2059,7 @@ int fts_test_get_strength(u8 *base_raw, u8 tx, u8 rx)
         goto test_err;
     }
 
-    fts_test_write_reg(FTS_heatmap_REG_9E, 0x00);
-    sys_delay(10);
-    fts_test_write_reg(FTS_heatmap_REG_1E, 0x00);
+    fts_set_heatmap_mode(false);
 
 test_err:
     FTS_TEST_INFO("====== Test Item: strength test end\n");

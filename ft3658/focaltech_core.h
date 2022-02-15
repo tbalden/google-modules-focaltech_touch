@@ -302,6 +302,9 @@ int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data);
 int fts_gesture_suspend(struct fts_ts_data *ts_data);
 int fts_gesture_resume(struct fts_ts_data *ts_data);
 
+/* Heatmap */
+void fts_set_heatmap_mode(bool en);
+
 /* Apk and functions */
 int fts_create_apk_debug_channel(struct fts_ts_data *);
 void fts_release_apk_debug_channel(struct fts_ts_data *);

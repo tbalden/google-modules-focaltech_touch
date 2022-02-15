@@ -117,9 +117,9 @@
 #define FTS_REG_SENSE_ONOFF                 0xEA
 #define FTS_REG_IRQ_ONOFF                   0xEB
 
-#define FTS_heatmap_REG_1E                  0x1E
-#define FTS_heatmap_REG_ED                  0xED
-#define FTS_heatmap_REG_9E                  0x9E
+#define FTS_REG_HEATMAP_1E                  0x1E
+#define FTS_REG_HEATMAP_ED                  0xED
+#define FTS_REG_HEATMAP_9E                  0x9E
 
 #define FTS_LPTW_REG_SET_E1                 0xE1
 #define FTS_LPTW_REG_SET_E2                 0xE2

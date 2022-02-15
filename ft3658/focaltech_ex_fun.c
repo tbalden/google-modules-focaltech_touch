@@ -2084,7 +2084,7 @@ static ssize_t proc_heatmap_onoff_read(struct file *filp,
     if (pos)
         return 0;
 
-    ret = fts_read_reg(FTS_heatmap_REG_9E, &mode);
+    ret = fts_read_reg(FTS_REG_HEATMAP_9E, &mode);
     if (ret < 0) {
         FTS_ERROR("read reg_0x9E fails");
         return ret;
@@ -2127,14 +2127,7 @@ static ssize_t proc_heatmap_onoff_write(struct file *filp,
     }
 
     FTS_INFO("switch heatmap on/off to %d", mode);
-    if (mode == 1){
-        fts_write_reg(FTS_heatmap_REG_1E, 0x01);
-        fts_write_reg(FTS_heatmap_REG_ED, 0x00);
-        fts_write_reg(FTS_heatmap_REG_9E, 0x01);
-    } else {
-        fts_write_reg(FTS_heatmap_REG_9E, 0x00);
-        fts_write_reg(FTS_heatmap_REG_1E, 0x00);
-    }
+    fts_set_heatmap_mode(mode == 1 ? true : false);
 
     return count;
 }
