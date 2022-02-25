@@ -2347,10 +2347,12 @@ static int fts_ts_suspend(struct device *dev)
     } else {
         /* Disable irq */
         fts_irq_disable();
+#if !defined(FTS_AOC_GESTURE_EN)
         FTS_DEBUG("make TP enter into sleep mode");
         ret = fts_write_reg(FTS_REG_POWER_MODE, FTS_REG_POWER_MODE_SLEEP);
         if (ret < 0)
             FTS_ERROR("set TP to sleep mode fail, ret=%d", ret);
+#endif
 
         if (!ts_data->ic_info.is_incell) {
 #if FTS_POWER_SOURCE_CUST_EN
