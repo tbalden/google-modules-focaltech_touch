@@ -541,10 +541,13 @@ static int fts_input_report_b(struct fts_ts_data *data)
 
             if ((data->log_level >= 2) ||
                 ((1 == data->log_level) && (FTS_TOUCH_DOWN == events[i].flag))) {
-                FTS_DEBUG("[B]P%d(%d, %d)[p:%d,tm:%d] DOWN!",
+                FTS_DEBUG("[B]P%d(%d, %d)[ma:%d,mi:%d,p:%d] DOWN!",
                           events[i].id,
-                          events[i].x, events[i].y,
-                          events[i].p, events[i].area);
+                          events[i].x,
+                          events[i].y,
+                          events[i].major,
+                          events[i].minor,
+                          events[i].p);
             }
         } else {
             uppoint++;
@@ -620,10 +623,13 @@ static int fts_input_report_a(struct fts_ts_data *data)
 
             if ((data->log_level >= 2) ||
                 ((1 == data->log_level) && (FTS_TOUCH_DOWN == events[i].flag))) {
-                FTS_DEBUG("[A]P%d(%d, %d)[p:%d,tm:%d] DOWN!",
+                FTS_DEBUG("[A]P%d(%d, %d)[ma:%d,mi:%d,p:%d] DOWN!",
                           events[i].id,
-                          events[i].x, events[i].y,
-                          events[i].p, events[i].area);
+                          events[i].x,
+                          events[i].y,
+                          events[i].major,
+                          events[i].minor,
+                          events[i].p);
             }
             touchs++;
         }
@@ -875,10 +881,10 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
                       (buf[FTS_TOUCH_Y_L_POS + base] & 0xFF);
         events[i].flag = buf[FTS_TOUCH_EVENT_POS + base] >> 6;
         events[i].id = buf[FTS_TOUCH_ID_POS + base] >> 4;
-        events[i].p = buf[FTS_TOUCH_PRE_POS + base] & 0x1F;
-        events[i].minor = ((buf[FTS_TOUCH_PRE_POS + base] >> 3) & 0x1C) +
-                          (buf[FTS_TOUCH_AREA_POS + base] & 0x03);
-        events[i].major = (buf[FTS_TOUCH_AREA_POS + base] >> 2) & 0x3F;
+        events[i].p = ((buf[FTS_TOUCH_AREA_POS + base] << 1) & 0x02) +
+                       (buf[FTS_TOUCH_PRE_POS + base] & 0x01);
+        events[i].minor = (buf[FTS_TOUCH_PRE_POS + base] >> 1) & 0x7F;
+        events[i].major = (buf[FTS_TOUCH_AREA_POS + base] >> 1) & 0x7F;
 
         if (EVENT_DOWN(events[i].flag) && (data->point_num == 0)) {
             FTS_INFO("abnormal touch data from fw");
@@ -1244,9 +1250,9 @@ static int fts_input_init(struct fts_ts_data *ts_data)
     input_set_abs_params(input_dev, ABS_MT_POSITION_X, pdata->x_min, pdata->x_max, 0, 0);
     input_set_abs_params(input_dev, ABS_MT_POSITION_Y, pdata->y_min, pdata->y_max, 0, 0);
     input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR, 0, 0x3F, 0, 0);
-    input_set_abs_params(input_dev, ABS_MT_TOUCH_MINOR, 0, 0x1F, 0, 0);
+    input_set_abs_params(input_dev, ABS_MT_TOUCH_MINOR, 0, 0x3F, 0, 0);
 #if FTS_REPORT_PRESSURE_EN
-    input_set_abs_params(input_dev, ABS_MT_PRESSURE, 0, 0x1F, 0, 0);
+    input_set_abs_params(input_dev, ABS_MT_PRESSURE, 0, 0x03, 0, 0);
 #endif
 
     ret = input_register_device(input_dev);
