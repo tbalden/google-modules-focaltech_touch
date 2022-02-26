@@ -229,4 +229,8 @@ enum TOUCH_POWER_MODE {
 #define FTS_ERROR(fmt, args...) do { \
     printk(KERN_ERR "[FTS_TS/E]%s:"fmt"\n", __func__, ##args); \
 } while (0)
+
+#define PR_LOGD(log, ...) \
+    pr_debug("[FTS_TS/D] %s: " log, __func__, ##__VA_ARGS__)
+
 #endif /* __LINUX_FOCALTECH_COMMON_H__ */

@@ -956,16 +956,15 @@ static void fts_irq_read_report(void)
         mutex_unlock(&ts_data->report_mutex);
     }
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
-    FTS_DEBUG("try to reserve a frame");
     ret = touch_offload_reserve_frame(&ts_data->offload,
                                       &ts_data->reserved_frame);
     if (ret != 0) {
-        FTS_DEBUG("Could not reserve a frame: error=%d.\n", ret);
+        PR_LOGD("Could not reserve a frame: error=%d.\n", ret);
         /* Stop offload when there are no buffers available. */
         fts_offload_set_running(ts_data, false);
     } else {
         fts_offload_set_running(ts_data, true);
-        FTS_DEBUG("reserve a frame ok");
+        PR_LOGD("reserve a frame ok");
         fts_populate_frame(ts_data);
 
         ret = touch_offload_queue_frame(&ts_data->offload,
@@ -2182,11 +2181,11 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
     ret = of_property_read_u8_array(np, "focaltech,touch_offload_id",
                                     offload_id, 4);
     if (ret == -EINVAL) {
-        dev_err(dev,
-            "Failed to read focaltech,touch_offload_id with error = %d\n", ret);
+        FTS_ERROR("Failed to read focaltech,touch_offload_id with error = %d\n",
+            ret);
     } else {
         pdata->offload_id = *(u32 *)offload_id;
-        dev_info(dev, "Offload device ID = \"%c%c%c%c\" / 0x%08X\n",
+        FTS_DEBUG("Offload device ID = \"%c%c%c%c\" / 0x%08X\n",
             offload_id[0], offload_id[1], offload_id[2], offload_id[3],
             pdata->offload_id);
     }
