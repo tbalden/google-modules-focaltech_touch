@@ -945,8 +945,10 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
         events[i].id = buf[FTS_TOUCH_ID_POS + base] >> 4;
         events[i].p = ((buf[FTS_TOUCH_AREA_POS + base] << 1) & 0x02) +
                        (buf[FTS_TOUCH_PRE_POS + base] & 0x01);
-        events[i].minor = (buf[FTS_TOUCH_PRE_POS + base] >> 1) & 0x7F;
-        events[i].major = (buf[FTS_TOUCH_AREA_POS + base] >> 1) & 0x7F;
+        events[i].minor =
+            ((buf[FTS_TOUCH_PRE_POS + base] >> 1) & 0x7F) * data->pdata->mm2px;
+        events[i].major =
+            ((buf[FTS_TOUCH_AREA_POS + base] >> 1) & 0x7F) * data->pdata->mm2px;
 
         if (EVENT_DOWN(events[i].flag) && (data->point_num == 0)) {
             FTS_INFO("abnormal touch data from fw");
@@ -2240,6 +2242,14 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
     } else {
         pdata->rx_ch_num = temp_val;
         FTS_DEBUG("rx_ch_num = %d", pdata->rx_ch_num);
+    }
+
+    ret = of_property_read_u8(np, "focaltech,mm2px", &pdata->mm2px);
+    if (ret < 0) {
+        FTS_ERROR("Unable to get mm2px, please check dts");
+        pdata->mm2px = 1;
+    } else {
+        FTS_DEBUG("mm2px = %d", pdata->mm2px);
     }
 
     pdata->irq_gpio = of_get_named_gpio_flags(np, "focaltech,irq-gpio",

@@ -154,6 +154,8 @@ struct fts_ts_platform_data {
 #endif
     u32 tx_ch_num;
     u32 rx_ch_num;
+    /* convert mm to pixel for major and minor */
+    u8 mm2px;
 };
 
 struct ts_event {
