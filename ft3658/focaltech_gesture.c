@@ -346,7 +346,7 @@ int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data)
         gesture->Gesture_major[i] = majorminor_buf[8 * i + 4];
         gesture->Gesture_minor[i] = majorminor_buf[8 * i + 5];
 
-        FTS_DEBUG("x=%d, y=%d, major=%d, minor=%d\n",
+        FTS_DEBUG("x=%d ,y=%d, major=%d, minor=%d\n",
             gesture->coordinate_x[i], gesture->coordinate_y[i],
             gesture->Gesture_major[i], gesture->Gesture_minor[i]);
     }
