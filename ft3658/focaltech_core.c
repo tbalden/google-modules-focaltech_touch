@@ -89,6 +89,7 @@ static u8 current_host_status;
 #endif
 static int fts_ts_suspend(struct device *dev);
 static int fts_ts_resume(struct device *dev);
+static void fts_update_feature_setting(struct fts_ts_data *ts_data);
 
 int fts_check_cid(struct fts_ts_data *ts_data, u8 id_h)
 {
@@ -824,44 +825,44 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
                 switch (i) {
                     case STATUS_HOPPING : // Hopping result
                         if (check_regB2_status & 0x03) {
-                            FTS_DEBUG("-------Hopping from %dKhz to %dKhz\n",
+                            FTS_INFO("-------Hopping from %dKhz to %dKhz\n",
                                 hopping_freq[current_host_status & 0x03],
                                 hopping_freq[get_regB2_status & 0x03]);
                         }
                         break;
                     case STATUS_PALM : // Palm result
                         if (check_regB2_status & (1 << i)) {
-                            FTS_DEBUG("-------PALM mode = %s\n",
+                            FTS_INFO("-------PALM mode = %s\n",
                                 (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
                         }
                         break;
                     case STATUS_WATER : // Water result
                         if (check_regB2_status & (1 << i)) {
-                            FTS_DEBUG("-------WATER mode = %s\n",
+                            FTS_INFO("-------WATER mode = %s\n",
                                 (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
                         }
                         break;
                     case STATUS_GRIP : // Grip result
                         if( check_regB2_status & (1 << i)) {
-                            FTS_DEBUG("-------GRIP mode = %s\n",
+                            FTS_INFO("-------GRIP mode = %s\n",
                                 (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
                         }
                         break;
                     case STATUS_GLOVE : // Glove result
                         if( check_regB2_status & (1 << i)) {
-                            FTS_DEBUG("-------GlOVE mode = %s\n",
+                            FTS_INFO("-------GlOVE mode = %s\n",
                                 (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
                         }
                         break;
                     case STATUS_STTW : // STTW result
                         if( check_regB2_status & (1 << i)) {
-                            FTS_DEBUG("-------STTW = %s\n",
+                            FTS_INFO("-------STTW = %s\n",
                                 (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
                         }
                         break;
                     case STATUS_LPTW : // LPTW result
                         if( check_regB2_status & (1 << i)) {
-                            FTS_DEBUG("-------LPTW = %s\n",
+                            FTS_INFO("-------LPTW = %s\n",
                                 (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
                         }
                         break;
@@ -871,8 +872,31 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
             }
             current_host_status = get_regB2_status;
 
-            if (buf[2] == 0)
+            if (buf[2] == 0) {
+                if ((data->log_level >= 2) ||
+                    ((1 == data->log_level) && (FTS_TOUCH_DOWN == events[i].flag))) {
+                    FTS_DEBUG("Skip report key data.");
+                }
                 return -EIO;
+            }
+
+            /* Filter the touch data by report flag. */
+            if (check_regB2_status & (1 << STATUS_PALM)) {
+                if ((data->log_level >= 2) ||
+                    ((1 == data->log_level) && (FTS_TOUCH_DOWN == events[i].flag))) {
+                    FTS_DEBUG("Skip report palm touch data.");
+                }
+                return -EINVAL;
+            }
+
+            if (check_regB2_status & (1 << STATUS_GRIP)) {
+                if ((data->log_level >= 2) ||
+                    ((1 == data->log_level) && (FTS_TOUCH_DOWN == events[i].flag))) {
+                    FTS_DEBUG("Skip report grip touch data.");
+                }
+                return -EINVAL;
+            }
+            /* end of filter the touch data. */
         }
     }
 #endif
@@ -1393,6 +1417,11 @@ static void fts_offload_set_running(struct fts_ts_data *ts_data, bool running)
 {
     if (ts_data->offload.offload_running != running) {
         ts_data->offload.offload_running = running;
+    }
+    if (ts_data->offload.offload_running == ts_data->enable_fw_grip &&
+        ts_data->enable_fw_grip < 2) {
+        ts_data->enable_fw_grip = ts_data->offload.offload_running ? 0 : 1;
+        fts_update_feature_setting(ts_data);
     }
 }
 
@@ -2584,6 +2613,13 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         FTS_ERROR("create apk debug node fail");
     }
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    ts_data->enable_fw_heatmap = false;
+#endif
+    ts_data->enable_fw_grip = 0x00;
+    ts_data->enable_fw_palm = 0x01;
+    fts_update_feature_setting(ts_data);
+
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
     ts_data->offload.caps.touch_offload_major_version = TOUCH_OFFLOAD_INTERFACE_MAJOR_VERSION;
     ts_data->offload.caps.touch_offload_minor_version = TOUCH_OFFLOAD_INTERFACE_MINOR_VERSION;
@@ -2906,6 +2942,9 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 
 void fts_set_heatmap_mode(bool en)
 {
+    struct fts_ts_data *ts_data = fts_data;
+    if (ts_data->enable_fw_heatmap == en)
+        return;
     if (en == 1){
         fts_write_reg(FTS_REG_HEATMAP_1E, 0x01);
         fts_write_reg(FTS_REG_HEATMAP_ED, 0x00);
@@ -2914,7 +2953,62 @@ void fts_set_heatmap_mode(bool en)
         fts_write_reg(FTS_REG_HEATMAP_9E, 0x00);
         fts_write_reg(FTS_REG_HEATMAP_1E, 0x00);
     }
+    ts_data->enable_fw_heatmap = en;
     FTS_DEBUG("%s heatmap.\n", en ? "Enable" : "Disable");
+}
+
+int fts_set_grip_mode(bool en)
+{
+    int ret = 0;
+#if FTS_DEBUG_EN
+    struct fts_ts_data *ts_data = fts_data;
+#endif
+
+    ret = fts_write_reg(FTS_REG_EDGE_MODE_EN, en ? 0x00 : 0xAA);
+    if (ret < 0) {
+        FTS_ERROR("write reg0x8C fails");
+        return ret;
+    }
+    FTS_DEBUG("%s fw_grip(%d).\n", en ? "Enable" : "Disable",
+        ts_data->enable_fw_grip);
+    return ret;
+}
+
+int fts_set_palm_mode(bool en)
+{
+    int ret = 0;
+#if FTS_DEBUG_EN
+    struct fts_ts_data *ts_data = fts_data;
+#endif
+
+    ret = fts_write_reg(FTS_REG_PALM_EN, en ? 0x01 : 0x00);
+    if (ret < 0) {
+        FTS_ERROR("write reg0xC5 fails");
+        return ret;
+    }
+    FTS_DEBUG("%s fw_palm(%d).\n", en ? "Enable" : "Disable",
+        ts_data->enable_fw_palm);
+    return ret;
+}
+
+/**
+ * fts_update_feature_setting()
+ *
+ * Restore the feature settings after the device resume.
+ *
+ * @param
+ *    [ in] ts_data: touch driver handle
+ *
+ */
+static void fts_update_feature_setting(struct fts_ts_data *ts_data)
+{
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    fts_set_heatmap_mode(true);
+#endif
+
+    fts_set_grip_mode(ts_data->enable_fw_grip % 2);
+
+    fts_set_palm_mode(ts_data->enable_fw_palm % 2);
 }
 
 static int fts_ts_suspend(struct device *dev)
@@ -3000,9 +3094,9 @@ static int fts_ts_resume(struct device *dev)
     } else {
         fts_irq_enable();
     }
-#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    fts_set_heatmap_mode(true);
-#endif
+    /* update feature setting. */
+    fts_update_feature_setting(ts_data);
+
     ts_data->suspended = false;
     FTS_FUNC_EXIT();
     return 0;

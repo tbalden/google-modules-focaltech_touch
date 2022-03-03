@@ -231,6 +231,11 @@ struct fts_ts_data {
     int key_state;
     int touch_point;
     int point_num;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    bool enable_fw_heatmap;
+#endif
+    u8 enable_fw_grip;
+    u8 enable_fw_palm;
     ktime_t isr_timestamp; /* Time that the event was first received from the
                         * touch IC, acquired during hard interrupt, in
                         * CLOCK_MONOTONIC */
@@ -328,6 +333,8 @@ int fts_gesture_resume(struct fts_ts_data *ts_data);
 
 /* Heatmap */
 void fts_set_heatmap_mode(bool en);
+int fts_set_grip_mode(bool en);
+int fts_set_palm_mode(bool en);
 
 /* Apk and functions */
 int fts_create_apk_debug_channel(struct fts_ts_data *);

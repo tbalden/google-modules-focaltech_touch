@@ -1764,22 +1764,16 @@ static ssize_t proc_palm_read(struct file *filp, char __user *buff,
     size_t count, loff_t *ppos)
 {
     int cnt = 0;
-    int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     char tmpbuf[PROC_BUF_SIZE] = { 0 };
-    u8 palm_mode = 0;
     loff_t pos = *ppos;
 
     if (pos)
         return 0;
 
-    ret = fts_read_reg(FTS_REG_PALM_EN, &palm_mode);
-    if (ret < 0) {
-        FTS_ERROR("read reg0xC5 fails");
-        return ret;
-    }
-
-    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "palm mode:%s\n",
-        palm_mode ? "Enable" : "Disable");
+    FTS_DEBUG("fw_palm = %d", ts_data->enable_fw_palm);
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "%u\n", ts_data->enable_fw_palm);
 
     if (copy_to_user(buff, tmpbuf, cnt)) {
         FTS_ERROR("copy to user error");
@@ -1790,10 +1784,18 @@ static ssize_t proc_palm_read(struct file *filp, char __user *buff,
     return cnt;
 }
 
+/*
+ * Set palm rejection mode.
+ * 0 - Disable fw palm rejection.
+ * 1 - Enable fw palm rejection.
+ * 2 - Force disable fw palm rejection.
+ * 3 - Force enable fw palm rejection.
+ */
 static ssize_t proc_palm_write(struct file *filp, const char __user *buff,
     size_t count, loff_t *ppos)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     char tmpbuf[PROC_BUF_SIZE] = { 0 };
     int palm_mode = 0xFF;
     int buflen = count;
@@ -1814,10 +1816,17 @@ static ssize_t proc_palm_write(struct file *filp, const char __user *buff,
         return -EINVAL;
     }
 
-    FTS_INFO("switch palm mode to %d", palm_mode);
-    ret = fts_write_reg(FTS_REG_PALM_EN, !!palm_mode);
+    if (palm_mode < 0 || palm_mode > 3) {
+        FTS_ERROR("get palm mode fails, fw_palm should be in [0,1,2,3].");
+        return -EINVAL;
+    }
+
+    ts_data->enable_fw_palm = palm_mode;
+    FTS_INFO("switch fw_aplm to %u\n", ts_data->enable_fw_palm);
+
+    palm_mode = palm_mode % 2;
+    ret = fts_set_palm_mode(palm_mode);
     if (ret < 0) {
-        FTS_ERROR("write reg0xC5 fails");
         return ret;
     }
 
@@ -1842,22 +1851,16 @@ static ssize_t proc_grip_read(struct file *filp, char __user *buff,
     size_t count, loff_t *ppos)
 {
     int cnt = 0;
-    int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     char tmpbuf[PROC_BUF_SIZE] = { 0 };
-    u8 grip_mode = 0;
     loff_t pos = *ppos;
 
     if (pos)
         return 0;
 
-    ret = fts_read_reg(FTS_REG_EDGE_MODE_EN, &grip_mode);
-    if (ret < 0) {
-        FTS_ERROR("read reg0x8C fails");
-        return ret;
-    }
-
-    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "grip mode:%s\n",
-        grip_mode ? "Enable" : "Disable");
+    FTS_DEBUG("fw_grip = %u", ts_data->enable_fw_grip);
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "%u\n", ts_data->enable_fw_grip);
 
     if (copy_to_user(buff, tmpbuf, cnt)) {
         FTS_ERROR("copy to user error");
@@ -1868,10 +1871,18 @@ static ssize_t proc_grip_read(struct file *filp, char __user *buff,
     return cnt;
 }
 
+/*
+ * Set Grip suppression mode.
+ * 0 - Disable fw grip suppression.
+ * 1 - Enable fw grip suppression.
+ * 2 - Force disable fw grip suppression.
+ * 3 - Force enable fw grip suppression.
+ */
 static ssize_t proc_grip_write(struct file *filp, const char __user *buff,
     size_t count, loff_t *ppos)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     char tmpbuf[PROC_BUF_SIZE] = { 0 };
     int grip_mode = 0xFF;
     int buflen = count;
@@ -1891,11 +1902,17 @@ static ssize_t proc_grip_write(struct file *filp, const char __user *buff,
         FTS_ERROR("get mode fails,ret=%d", ret);
         return -EINVAL;
     }
+    if (grip_mode < 0 || grip_mode > 3) {
+        FTS_ERROR("get mode fails, grip_mode should be in [0,1,2,3].");
+        return -EINVAL;
+    }
 
-    FTS_INFO("switch grip mode to %d", grip_mode);
-    ret = fts_write_reg(FTS_REG_EDGE_MODE_EN, grip_mode);
+    ts_data->enable_fw_grip = grip_mode;
+    FTS_INFO("switch fw_grip to %u\n", ts_data->enable_fw_grip);
+
+    grip_mode = grip_mode % 2;
+    ret = fts_set_grip_mode(grip_mode);
     if (ret < 0) {
-        FTS_ERROR("write reg0x8C fails");
         return ret;
     }
 
@@ -2510,7 +2527,7 @@ static int fts_create_ctrl_procs(struct fts_ts_data *ts_data)
         return ret;
     }
 
-    proc_palm = proc_create_data("palm", S_IRUSR|S_IWUSR,
+    proc_palm = proc_create_data("fw_palm", S_IRUSR|S_IWUSR,
         ts_data->proc_touch_entry, &proc_palm_fops, ts_data);
     if (!proc_palm) {
         FTS_ERROR("create proc_palm entry fail");
@@ -2518,7 +2535,7 @@ static int fts_create_ctrl_procs(struct fts_ts_data *ts_data)
         return ret;
     }
 
-    proc_grip = proc_create_data("grip", S_IRUSR|S_IWUSR,
+    proc_grip = proc_create_data("fw_grip", S_IRUSR|S_IWUSR,
         ts_data->proc_touch_entry, &proc_grip_fops, ts_data);
     if (!proc_grip) {
         FTS_ERROR("create proc_grip entry fail");

@@ -131,7 +131,7 @@
 #define FTS_LPTW_E2_BUF_LEN                 11
 #define FTS_LPTW_E1_BUF_LEN                 12
 
-#define FTS_REG_CUSTOMER_STATUS             0xB2    // follow _FTS_CUSTOMER_STATUS.
+#define FTS_REG_CUSTOMER_STATUS             0xB2    // follow FTS_CUSTOMER_STATUS.
                                                     // bit 0~1 : HOPPING
                                                     // bit 2   : PALM
                                                     // bit 3   : WATER
