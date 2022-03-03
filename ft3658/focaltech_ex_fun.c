@@ -55,7 +55,7 @@
 #define PROC_CONFIGURE                          18
 #define PROC_CONFIGURE_INTR                     20
 #define PROC_NAME                               "ftxxxx-debug"
-#define PROC_BUF_SIZE                           256
+#define PROC_BUF_SIZE                           512
 
 /*****************************************************************************
 * Private enumerations, structures and unions using typedef
@@ -2162,14 +2162,15 @@ static const struct file_operations proc_heatmap_onoff_fops = {
 };
 #endif
 
-static ssize_t proc_LPTW_setting_write(struct file *filp, const char __user *buff, size_t count, loff_t *ppos)
+static ssize_t proc_LPTW_setting_write(
+    struct file *filp, const char __user *buff, size_t count, loff_t *ppos)
 {
     int ret = 0;
     char tmpbuf[PROC_BUF_SIZE] = {0};
 
     int buflen = count;
-    int lptw_write_data[FTS_LPTW_E1_BUF_LEN] = {0};
-    u8  write_data[FTS_LPTW_E1_BUF_LEN] = {0};
+    int lptw_write_data[FTS_LPTW_BUF_LEN] = {0};
+    u8  write_data[FTS_LPTW_BUF_LEN] = {0};
 
     u8 cmd[2] = {0};
     u32 data_length = 0;
@@ -2188,11 +2189,11 @@ static ssize_t proc_LPTW_setting_write(struct file *filp, const char __user *buf
         return -EFAULT;
     }
 
-    ret = sscanf(tmpbuf, "%x%x%x%x%x%x%x%x%x%x%x%x", &lptw_write_data[0],
+    ret = sscanf(tmpbuf, "%x%x%x%x%x%x%x%x%x%x%x%x%x", &lptw_write_data[0],
         &lptw_write_data[1], &lptw_write_data[2], &lptw_write_data[3],
         &lptw_write_data[4], &lptw_write_data[5], &lptw_write_data[6],
         &lptw_write_data[7], &lptw_write_data[8], &lptw_write_data[9],
-        &lptw_write_data[10], &lptw_write_data[11]);
+        &lptw_write_data[10], &lptw_write_data[11], &lptw_write_data[12]);
 
     if(lptw_write_data[0] == FTS_LPTW_REG_SET_E1)
         data_length = FTS_LPTW_E1_BUF_LEN;
@@ -2205,9 +2206,9 @@ static ssize_t proc_LPTW_setting_write(struct file *filp, const char __user *buf
         write_data[i] = (char)lptw_write_data[i];
 
     if (data_length != 0){
-        ret=fts_write(write_data,data_length);
+        ret=fts_write(write_data, data_length);
         if (ret < 0) {
-            FTS_ERROR("write data to register E3/E2 fail");
+            FTS_ERROR("write data to register E1/E2 fail");
             return ret;
         }
     }
@@ -2216,7 +2217,8 @@ static ssize_t proc_LPTW_setting_write(struct file *filp, const char __user *buf
 }
 
 /*LPTW setting read*/
-static ssize_t proc_LPTW_setting_read(struct file *filp, char __user *buff, size_t count, loff_t *ppos)
+static ssize_t proc_LPTW_setting_read(
+    struct file *filp, char __user *buff, size_t count, loff_t *ppos)
 {
     int cnt = 0;
     int ret = 0;
@@ -2248,15 +2250,13 @@ static ssize_t proc_LPTW_setting_read(struct file *filp, char __user *buff, size
 
     cmd[0] = FTS_LPTW_REG_SET_E1;
     cmd[1] = FTS_LPTW_REG_SET_E2;
-
-    ret = fts_read(&cmd[0], 1, readbuf, 11);
+    ret = fts_read(&cmd[0], 1, readbuf, FTS_LPTW_E1_BUF_LEN - 1);
     if (ret < 0) {
         FTS_ERROR("read reg_0xE1 fails");
         goto proc_read_err;
     }
-
     cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
-        "****LPTW Gesture_part 1 setting:\n");
+        "==LPTW Gesture setting(E1)==\n");
     cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "min_x :%4d\n",
         ((readbuf[0] & 0x0F) << 8) + (readbuf[1] & 0xFF));
     cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "min_y :%4d\n",
@@ -2272,14 +2272,13 @@ static ssize_t proc_LPTW_setting_read(struct file *filp, char __user *buff, size
     cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
         "max_touch_size :%3d\n\n", (readbuf[10] & 0xFF));
 
-    ret = fts_read(&cmd[1], 1, readbuf, 10);
+    ret = fts_read(&cmd[1], 1, readbuf, FTS_LPTW_E2_BUF_LEN - 1);
     if (ret < 0) {
-        FTS_ERROR("read reg_0xE1 fails");
+        FTS_ERROR("read reg_0xE2 fails");
         goto proc_read_err;
     }
-
     cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
-        "****LPTW Gesture_part 2 & part 3 setting:\n");
+        "==LPTW Gesture setting(E2)==\n");
     cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
         "marginal_min_x :%2d\n", (readbuf[0] & 0xFF));
     cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
@@ -2299,7 +2298,8 @@ static ssize_t proc_LPTW_setting_read(struct file *filp, char __user *buff, size
     cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
         "min_node_count :%2d\n", (readbuf[8] & 0xFF));
     cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
-        "motion_boundary :%2d\n", (readbuf[9] & 0xFF));
+        "motion_boundary :%4d\n\n",((readbuf[10] & 0x0F) << 8) +
+        (readbuf[11] & 0xFF));
 
     if (copy_to_user(buff, tmpbuf, cnt)) {
         FTS_ERROR("copy to user error");
@@ -2335,7 +2335,8 @@ static const struct file_operations LPTW_setting_fops = {
 };
 #endif
 
-static ssize_t proc_STTW_setting_write(struct file *filp, const char __user *buff, size_t count, loff_t *ppos)
+static ssize_t proc_STTW_setting_write(
+    struct file *filp, const char __user *buff, size_t count, loff_t *ppos)
 {
     int ret = 0;
     char tmpbuf[PROC_BUF_SIZE] = {0};
@@ -2380,7 +2381,8 @@ static ssize_t proc_STTW_setting_write(struct file *filp, const char __user *buf
 }
 
 /*STTW setting read*/
-static ssize_t proc_STTW_setting_read(struct file *filp, char __user *buff, size_t count, loff_t *ppos)
+static ssize_t proc_STTW_setting_read(
+    struct file *filp, char __user *buff, size_t count, loff_t *ppos)
 {
     int cnt = 0;
     int ret = 0;
@@ -2412,13 +2414,14 @@ static ssize_t proc_STTW_setting_read(struct file *filp, char __user *buff, size
 
     cmd[0] = FTS_STTW_REG_SET_E3;
 
-    ret = fts_read(&cmd[0], 1, readbuf, 12);
+    ret = fts_read(&cmd[0], 1, readbuf, FTS_STTW_E3_BUF_LEN - 1);
     if (ret < 0) {
         FTS_ERROR("read reg_0xE3 fails");
         goto proc_read_err;
     }
 
-    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt, "==STTW Gesture setting:==\n");
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "==STTW Gesture setting(E3)==\n");
     cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
         "min_x :%4d\n",((readbuf[0] & 0x0F) << 8) +(readbuf[1] & 0xFF));
     cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,

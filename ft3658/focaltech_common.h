@@ -67,8 +67,12 @@
 
 #define FTS_MAX_CHIP_IDS        8
 
-#define FTS_CHIP_TYPE_MAPPING {{0x88, 0x56, 0x52, 0x00, 0x00, 0x00, 0x00, 0x56, 0xB2}}
+#define FTS_CHIP_TYPE_MAPPING   {{0x88, 0x56, 0x52, 0x00, 0x00, 0x00, 0x00, 0x56, 0xB2}}
 
+#define FTS_STTW_E3_BUF_LEN                 13
+#define FTS_LPTW_E2_BUF_LEN                 13
+#define FTS_LPTW_E1_BUF_LEN                 12
+#define FTS_LPTW_BUF_LEN                    (max(FTS_LPTW_E1_BUF_LEN, FTS_LPTW_E2_BUF_LEN))
 
 #define FILE_NAME_LENGTH                    128
 #define ENABLE                              1
@@ -126,10 +130,6 @@
 #define FTS_LPTW_REG_SET_E2                 0xE2
 #define FTS_STTW_REG_SET_E3                 0xE3
 #define FTS_GESTURE_MAJOR_MINOR             0xE5
-
-#define FTS_STTW_E3_BUF_LEN                 13
-#define FTS_LPTW_E2_BUF_LEN                 11
-#define FTS_LPTW_E1_BUF_LEN                 12
 
 #define FTS_REG_CUSTOMER_STATUS             0xB2    // follow FTS_CUSTOMER_STATUS.
                                                     // bit 0~1 : HOPPING
