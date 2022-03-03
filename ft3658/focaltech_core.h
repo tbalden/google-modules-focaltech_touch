@@ -63,6 +63,9 @@
 #include <linux/dma-mapping.h>
 #include <linux/pm_qos.h>
 #include "focaltech_common.h"
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+#include <heatmap.h>
+#endif
 
 /*****************************************************************************
 * Private constant and macro definitions using #define
@@ -143,6 +146,8 @@ struct fts_ts_platform_data {
     u32 x_min;
     u32 y_min;
     u32 max_touch_number;
+    u32 tx_ch_num;
+    u32 rx_ch_num;
 };
 
 struct ts_event {
@@ -220,9 +225,15 @@ struct fts_ts_data {
     int key_state;
     int touch_point;
     int point_num;
-    ktime_t timestamp; /* Time that the event was first received from the
+    ktime_t isr_timestamp; /* Time that the event was first received from the
                         * touch IC, acquired during hard interrupt, in
                         * CLOCK_MONOTONIC */
+    ktime_t coords_timestamp;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    u16 *heatmap_buff;
+    bool   v4l2_mutual_strength_data_ready;
+    struct v4l2_heatmap v4l2;
+#endif
     struct proc_dir_entry *proc_touch_entry;
     struct regulator *avdd;
     struct regulator *dvdd;

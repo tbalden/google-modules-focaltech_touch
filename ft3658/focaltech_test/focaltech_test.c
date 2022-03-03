@@ -2789,7 +2789,7 @@ static const struct file_operations proc_test_baseline_fops = {
 
 /* Strength test for full size */
 /* transpose raw */
-static void transpose_raw(u8 *src, u8 *dist, int tx, int rx) {
+void transpose_raw(u8 *src, u8 *dist, int tx, int rx) {
     int i = 0;
     int j = 0;
 
@@ -2817,6 +2817,7 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
 
     u8 *base_raw;
     u8 *trans_raw;
+    int base_raw_len = 0;
     int base = 0;
     int Fast_events_x = 0;
     int Fast_events_y = 0;
@@ -2830,17 +2831,18 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
 
     node_num = tx * rx;
     self_node = tx + rx;
-    self_cap_num = self_cap_offset + node_num * 2;
-    self_cap_num_off = self_cap_num + self_cap_len * 2;
-
-    base_raw = fts_malloc(self_cap_num * sizeof(int));
+    self_cap_num = self_cap_offset + node_num * sizeof(u16);
+    self_cap_num_off = self_cap_num + self_cap_len * sizeof(u16);
+    base_raw_len = self_cap_num + self_cap_len * 2 * sizeof(u16);
+    FTS_DEBUG("heapmap base_raw length = %d", base_raw_len);
+    base_raw = fts_malloc(base_raw_len);
     if (!base_raw) {
         FTS_ERROR("malloc memory for raw fails");
         ret = -ENOMEM;
         goto exit;
     }
 
-    trans_raw = fts_malloc(node_num * 2 * sizeof(int));
+    trans_raw = fts_malloc(node_num * sizeof(u16));
     if (!trans_raw) {
         FTS_ERROR("malloc memory for transpose raw fails");
         ret = -ENOMEM;
@@ -2862,13 +2864,14 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
                           (base_raw[3 + base] & 0xFF);
          Fast_events_y = ((base_raw[4 + base] & 0x0F) << 8) +
                           (base_raw[5 + base] & 0xFF);
-         Fast_events_id = (base_raw[4 + base]& 0xF0) >> 4;
+         Fast_events_id = (base_raw[4 + base] & 0xF0) >> 4;
          seq_printf(s, "Finger ID= %d , X= %d, y=%d\n", Fast_events_id,
-                    Fast_events_x,Fast_events_y);
+                    Fast_events_x, Fast_events_y);
     }
 
     seq_printf(s, "     ");
     /* transpose data buffer. */
+    FTS_DEBUG("index(mutual) = %d", self_cap_offset);
     transpose_raw(base_raw + self_cap_offset, trans_raw, tx, rx);
     for (i = 0; i < tx; i++)
         seq_printf(s, " TX%02d ", (i + 1));
@@ -2886,6 +2889,7 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     /*---------output self of strength data-----------*/
     seq_printf(s, "\n");
     seq_printf(s, "Scap raw(proof on):\n");
+    FTS_DEBUG("index(rx) = %d", self_cap_num);
     for (i = 0; i < self_node; i++) {
         base_result = (int)(base_raw[(i * 2) + self_cap_num] << 8) +
                       (int)base_raw[(i * 2) + self_cap_num + 1];
@@ -2894,6 +2898,7 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
             seq_printf(s, "RX:");
 
         if(i == rx) {
+            FTS_DEBUG("index(tx) = %d", (self_cap_num + (i * 2)));
             seq_printf(s, "\n");
             seq_printf(s, "TX:");
         }

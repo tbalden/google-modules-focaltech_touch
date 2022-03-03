@@ -2042,8 +2042,9 @@ int fts_test_get_strength(u8 *base_raw, u8 tx, u8 rx)
     int ret = 0;
     int self_cap_offset = 91;
     int self_cap_len = 68;
-    int self_data_len = self_cap_len * 2 * 2;
-    int fast_num_len = self_cap_offset + 2 * (tx * rx) + self_data_len;
+    int self_data_len = self_cap_len * 2; /* cap and cap_off */
+    int fast_num_len = self_cap_offset +
+                       ((tx * rx) + self_data_len) * sizeof(u16);
     u8 id_cmd[4] = {0};
 
     FTS_TEST_INFO("====== Test Item: strength test start\n");
@@ -2051,7 +2052,7 @@ int fts_test_get_strength(u8 *base_raw, u8 tx, u8 rx)
 
     fts_set_heatmap_mode(true);
     sys_delay(500);
-
+    FTS_TEST_DBG("Allocate heatmap length = %d.\n", fast_num_len);
     ret = fts_read(id_cmd, 1, base_raw, fast_num_len);
 
     if (ret < 0) {

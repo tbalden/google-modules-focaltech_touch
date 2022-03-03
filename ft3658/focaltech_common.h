@@ -82,6 +82,7 @@
 #define FTS_CMD_READ_ID_LEN                 4
 #define FTS_CMD_READ_ID_LEN_INCELL          1
 #define FTS_CMD_READ_FW_CONF                0xA8
+#define FTS_CMD_READ_TOUCH_DATA             0x01
 /*register address*/
 #define FTS_REG_INT_CNT                     0x8F
 #define FTS_REG_FLOW_WORK_CNT               0x91
@@ -138,6 +139,9 @@
                                                     // bit 5   : GLOVE
                                                     // bit 6   : STTW
                                                     // bit 7   : LPWG
+#define FTS_CAP_DATA_OFFSET                 91
+#define FTS_SELF_DATA_LEN                   68
+
 #define FTS_SYSFS_ECHO_ON(buf)      (buf[0] == '1')
 #define FTS_SYSFS_ECHO_OFF(buf)     (buf[0] == '0')
 

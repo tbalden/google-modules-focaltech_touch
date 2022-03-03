@@ -76,6 +76,9 @@ static int register_panel_bridge(struct fts_ts_data *ts);
 static void unregister_panel_bridge(struct drm_bridge *bridge);
 #endif
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+static int fts_get_heatmap(struct fts_ts_data *ts_data);
+#endif
 #if GOOGLE_REPORT_MODE
 static u8 current_host_status;
 #endif
@@ -546,6 +549,9 @@ static int fts_input_report_b(struct fts_ts_data *data)
                           events[i].x, events[i].y,
                           events[i].p, events[i].area);
             }
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+            heatmap_read(&data->v4l2, ktime_to_ns(data->coords_timestamp));
+#endif
         } else {
             uppoint++;
             input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, false);
@@ -581,7 +587,7 @@ static int fts_input_report_b(struct fts_ts_data *data)
             input_report_key(data->input_dev, BTN_TOUCH, 1);
         }
     }
-    input_set_timestamp(data->input_dev, data->timestamp);
+    input_set_timestamp(data->input_dev, data->coords_timestamp);
     input_sync(data->input_dev);
     return 0;
 }
@@ -716,11 +722,9 @@ static int fts_read_touchdata(struct fts_ts_data *data)
     u8 *buf = data->point_buf;
 
     memset(buf, 0xFF, data->pnt_buf_size);
-    buf[0] = 0x01;
+    buf[0] = FTS_CMD_READ_TOUCH_DATA;
 
     ret = fts_read(buf, 1, buf + 1, data->pnt_buf_size - 1);
-
-
     if (ret < 0) {
         FTS_ERROR("touch data(%x) abnormal,ret:%d", buf[1], ret);
         return -EIO;
@@ -741,6 +745,7 @@ static int fts_read_touchdata(struct fts_ts_data *data)
     return 0;
 }
 
+#if GOOGLE_REPORT_MODE
 static int get_work_mode(void) {
     int ret = 0;
     u8 mode = 0;
@@ -749,6 +754,7 @@ static int get_work_mode(void) {
         return mode;
     return ret;
 }
+#endif
 
 static int fts_read_parse_touchdata(struct fts_ts_data *data)
 {
@@ -917,6 +923,9 @@ static void fts_irq_read_report(void)
 #endif
         mutex_unlock(&ts_data->report_mutex);
     }
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    heatmap_read(&ts_data->v4l2, ktime_to_ns(ts_data->coords_timestamp));
+#endif
 
 #if FTS_ESDCHECK_EN
     fts_esdcheck_set_intr(0);
@@ -1097,11 +1106,277 @@ static void unregister_panel_bridge(struct drm_bridge *bridge)
 }
 #endif
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+static void fts_show_heatmap_data(struct fts_ts_data *ts_data) {
+    int i;
+    int idx_buff;
+    u8 tx = ts_data->pdata->tx_ch_num;
+    u8 rx = ts_data->pdata->rx_ch_num;
+    FTS_DEBUG("Show mutual data:\n");
+
+    idx_buff = 0;
+    for (i = 0; i < rx; i++) {
+        FTS_DEBUG("RX(%d):%5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d",
+            idx_buff,
+            (s16)ts_data->heatmap_buff[idx_buff],
+            (s16)ts_data->heatmap_buff[idx_buff + 1],
+            (s16)ts_data->heatmap_buff[idx_buff + 2],
+            (s16)ts_data->heatmap_buff[idx_buff + 3],
+            (s16)ts_data->heatmap_buff[idx_buff + 4],
+            (s16)ts_data->heatmap_buff[idx_buff + 5],
+            (s16)ts_data->heatmap_buff[idx_buff + 6],
+            (s16)ts_data->heatmap_buff[idx_buff + 7],
+            (s16)ts_data->heatmap_buff[idx_buff + 8],
+            (s16)ts_data->heatmap_buff[idx_buff + 9],
+            (s16)ts_data->heatmap_buff[idx_buff + 10],
+            (s16)ts_data->heatmap_buff[idx_buff + 11],
+            (s16)ts_data->heatmap_buff[idx_buff + 12],
+            (s16)ts_data->heatmap_buff[idx_buff + 13],
+            (s16)ts_data->heatmap_buff[idx_buff + 14],
+            (s16)ts_data->heatmap_buff[idx_buff + 15]);
+            idx_buff += tx;
+    }
+
+    FTS_DEBUG("Show Tx self data:\n");
+    FTS_DEBUG("Tx(idx_buff=%d):%5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d",
+        idx_buff,
+        (s16)ts_data->heatmap_buff[idx_buff],
+        (s16)ts_data->heatmap_buff[idx_buff + 1],
+        (s16)ts_data->heatmap_buff[idx_buff + 2],
+        (s16)ts_data->heatmap_buff[idx_buff + 3],
+        (s16)ts_data->heatmap_buff[idx_buff + 4],
+        (s16)ts_data->heatmap_buff[idx_buff + 5],
+        (s16)ts_data->heatmap_buff[idx_buff + 6],
+        (s16)ts_data->heatmap_buff[idx_buff + 7],
+        (s16)ts_data->heatmap_buff[idx_buff + 8],
+        (s16)ts_data->heatmap_buff[idx_buff + 9],
+        (s16)ts_data->heatmap_buff[idx_buff + 10],
+        (s16)ts_data->heatmap_buff[idx_buff + 11],
+        (s16)ts_data->heatmap_buff[idx_buff + 12],
+        (s16)ts_data->heatmap_buff[idx_buff + 13],
+        (s16)ts_data->heatmap_buff[idx_buff + 14],
+        (s16)ts_data->heatmap_buff[idx_buff + 15]);
+    idx_buff += 16;
+
+    FTS_DEBUG("Show Rx self data:\n");
+    FTS_DEBUG("Rx(idx_buff=%d)%5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d",
+        idx_buff,
+        (short)ts_data->heatmap_buff[idx_buff],
+        (short)ts_data->heatmap_buff[idx_buff + 1],
+        (short)ts_data->heatmap_buff[idx_buff + 2],
+        (short)ts_data->heatmap_buff[idx_buff + 3],
+        (short)ts_data->heatmap_buff[idx_buff + 4],
+        (short)ts_data->heatmap_buff[idx_buff + 5],
+        (short)ts_data->heatmap_buff[idx_buff + 6],
+        (short)ts_data->heatmap_buff[idx_buff + 7],
+        (short)ts_data->heatmap_buff[idx_buff + 8],
+        (short)ts_data->heatmap_buff[idx_buff + 9],
+        (short)ts_data->heatmap_buff[idx_buff + 10],
+        (short)ts_data->heatmap_buff[idx_buff + 11],
+        (short)ts_data->heatmap_buff[idx_buff + 12],
+        (short)ts_data->heatmap_buff[idx_buff + 13],
+        (short)ts_data->heatmap_buff[idx_buff + 14],
+        (short)ts_data->heatmap_buff[idx_buff + 15]);
+    idx_buff += 16;
+
+    FTS_DEBUG("Rx(idx_buff=%d)%5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d %5d",
+        idx_buff,
+        (short)ts_data->heatmap_buff[idx_buff],
+        (short)ts_data->heatmap_buff[idx_buff + 1],
+        (short)ts_data->heatmap_buff[idx_buff + 2],
+        (short)ts_data->heatmap_buff[idx_buff + 3],
+        (short)ts_data->heatmap_buff[idx_buff + 4],
+        (short)ts_data->heatmap_buff[idx_buff + 5],
+        (short)ts_data->heatmap_buff[idx_buff + 6],
+        (short)ts_data->heatmap_buff[idx_buff + 7],
+        (short)ts_data->heatmap_buff[idx_buff + 8],
+        (short)ts_data->heatmap_buff[idx_buff + 9],
+        (short)ts_data->heatmap_buff[idx_buff + 10],
+        (short)ts_data->heatmap_buff[idx_buff + 11],
+        (short)ts_data->heatmap_buff[idx_buff + 12],
+        (short)ts_data->heatmap_buff[idx_buff + 13],
+        (short)ts_data->heatmap_buff[idx_buff + 14],
+        (short)ts_data->heatmap_buff[idx_buff + 15]);
+    idx_buff += 16;
+
+    FTS_DEBUG("Rx(idx_buff=%d)%5d %5d", idx_buff,
+        (short)ts_data->heatmap_buff[idx_buff],
+        (short)ts_data->heatmap_buff[idx_buff + 1]);
+    idx_buff += 2;
+    FTS_DEBUG("Print done, idx_buff=%d", idx_buff);
+}
+#endif /* GOOGLE_HEATMAP_DEBUG */
+
+extern void transpose_raw(u8 *src, u8 *dist, int tx, int rx);
+static int fts_get_heatmap(struct fts_ts_data *ts_data) {
+    int ret = 0;
+    int i;
+    int idx_raw = 0;
+    int idx_buff = 0;
+    int heatmap_offset = FTS_CAP_DATA_OFFSET;
+    int node_num = 0;
+    int self_node = 0;
+    int self_data_len = 0;
+    int self_heatmap_data_len = 0;
+    u8 id_cmd[1] = {0};
+    u8 tx = ts_data->pdata->tx_ch_num;
+    u8 rx = ts_data->pdata->rx_ch_num;
+    u8 *heatmap_raw = NULL;
+    u8 *trans_raw = NULL;
+
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+    FTS_FUNC_ENTER();
+#endif
+
+    node_num = tx * rx;
+    self_node = tx + rx;
+    self_data_len = FTS_SELF_DATA_LEN * sizeof(u16);
+    self_heatmap_data_len =
+        FTS_CAP_DATA_OFFSET + node_num * sizeof(u16) + self_data_len;
+
+    /* The format of heatmap from touch chip
+     *
+     * |- mutual data(tx*rx*2) -|- cap(on) data(68*2) -|- cap(off) data(68*2) -|
+     * |-             16*34    -|-  rx(34) + tx(14)   -|- rx(34) + tx(14)     -|
+     *
+     * Only needs mutual data and cap(on) data.
+     */
+
+    if (!ts_data->heatmap_buff) {
+        FTS_ERROR("The heatmap_buff is not allocated!!");
+        ret = -ENOMEM;
+        goto exit;
+    }
+
+    heatmap_raw = kzalloc(self_heatmap_data_len, GFP_KERNEL);
+    if (!heatmap_raw) {
+        FTS_ERROR("Failed to malloc memory for heatmap buff.");
+        ret = -ENOMEM;
+        goto exit;
+    }
+
+    trans_raw = kzalloc(node_num * sizeof(u16), GFP_KERNEL);
+    if (!trans_raw) {
+        FTS_ERROR("Failed malloc memory for transpose buff fails.");
+        ret = -ENOMEM;
+        goto heatmap_raw_err;
+    }
+
+    /* Get strength data. */
+    id_cmd[0] = FTS_CMD_READ_TOUCH_DATA;
+    ret = fts_read(id_cmd, 1, heatmap_raw, FTS_CAP_DATA_OFFSET + self_heatmap_data_len);
+    if (ret < 0) {
+        FTS_ERROR("Failed to get heatmap raw data, ret=%d.", ret);
+        goto trans_raw_err;
+    }
+
+    idx_raw = heatmap_offset;
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+    FTS_DEBUG("mutual index in heatmap_raw=%d.", idx_raw);
+#endif
+    /* Transform the order from RX->TX. */
+    transpose_raw(heatmap_raw + idx_raw, trans_raw, tx, rx);
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+    FTS_DEBUG("start to copy matual data,idx_buff=%d.", idx_buff);
+#endif
+    /* Copy mutual data. */
+    for (i = 0; i < node_num; i++) {
+        ((u16*)ts_data->heatmap_buff)[idx_buff++] =
+            (u16)(trans_raw[(i * 2)] << 8) + trans_raw[(i * 2) + 1];
+    }
+
+    /* Copy tx self data first */
+    idx_raw = heatmap_offset + (node_num + rx) * sizeof(u16);
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+    FTS_DEBUG("Start to copy the tx self data,idx_buff=%d,idx_raw=%d.",
+        idx_buff, idx_raw);
+#endif
+    for (i = 0 ; i < tx; i++) {
+          ((u16*)ts_data->heatmap_buff)[idx_buff++] =
+             (u16)(heatmap_raw[idx_raw + (i * 2)] << 8) +
+             heatmap_raw[idx_raw +(i * 2) + 1];
+    }
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+    idx_raw = idx_raw + (i * 2) - 1;
+    FTS_DEBUG("Copy done,idx_buff=%d,idx_raw=%d.",idx_buff, idx_raw);
+#endif
+    /* Then copy rx self data */
+    idx_raw = heatmap_offset + node_num * sizeof(u16);
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+    FTS_DEBUG("Start to copy the rx self data,idx_buff=%d,idx_raw=%d.",
+        idx_buff, idx_raw);
+#endif
+    for (i = 0 ; i < rx; i++) {
+        ((u16*)ts_data->heatmap_buff)[idx_buff++] =
+            (u16)(heatmap_raw[idx_raw + (i * 2)] << 8) +
+            heatmap_raw[idx_raw + (i * 2) + 1];
+    }
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+    idx_raw = idx_raw + (i * 2) - 1;
+    FTS_DEBUG("Copy done, idx_raw=%d, idx_buff=%d", idx_raw, idx_buff);
+    /* Show the heatmap data for debugging. */
+    fts_show_heatmap_data(ts_data);
+#endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    ts_data->v4l2_mutual_strength_data_ready = true;
+#endif
+
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+    FTS_FUNC_EXIT();
+#endif
+trans_raw_err:
+    kfree_safe(trans_raw);
+    trans_raw = NULL;
+heatmap_raw_err:
+    kfree_safe(heatmap_raw);
+    heatmap_raw = NULL;
+exit:
+    return ret;
+}
+
+static bool v4l2_read_frame(struct v4l2_heatmap *v4l2)
+{
+    bool ret = true;
+
+    struct fts_ts_data *ts_data =
+        container_of(v4l2, struct fts_ts_data, v4l2);
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+    FTS_FUNC_ENTER();
+#endif
+    if (ts_data->v4l2.width == ts_data->pdata->tx_ch_num &&
+        ts_data->v4l2.height == ts_data->pdata->rx_ch_num) {
+        if (ts_data->v4l2_mutual_strength_data_ready) {
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+            FTS_DEBUG("v4l2 mutual strength data is ready.");
+#endif
+            memcpy(v4l2->frame, ts_data->heatmap_buff,
+                ts_data->v4l2.width * ts_data->v4l2.height * sizeof(u16));
+        } else {
+            fts_get_heatmap(ts_data);
+            memcpy(v4l2->frame, ts_data->heatmap_buff,
+                ts_data->v4l2.width * ts_data->v4l2.height * sizeof(u16));
+        }
+    } else {
+        FTS_ERROR("size mismatched, (%lu, %lu) vs (%u, %u)!\n",
+        ts_data->v4l2.width, ts_data->v4l2.height,
+        ts_data->pdata->tx_ch_num, ts_data->pdata->rx_ch_num);
+        ret = false;
+    }
+#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
+    FTS_DEBUG("mason set v4l2_mutual_strength_data_ready false");
+#endif
+    ts_data->v4l2_mutual_strength_data_ready = false;
+
+    return ret;
+}
+#endif /* CONFIG_TOUCHSCREEN_HEATMAP */
+
 static irqreturn_t fts_irq_ts(int irq, void *data)
 {
     struct fts_ts_data *ts_data = data;
 
-    ts_data->timestamp = ktime_get();
+    ts_data->isr_timestamp = ktime_get();
     return IRQ_WAKE_THREAD;
 }
 
@@ -1134,6 +1409,7 @@ static irqreturn_t fts_irq_handler(int irq, void *data)
     }
 #endif
     int_test_has_interrupt++;
+    fts_data->coords_timestamp = fts_data->isr_timestamp;
     cpu_latency_qos_update_request(&ts_data->pm_qos_req, 100 /* usec */);
     fts_irq_read_report();
     cpu_latency_qos_update_request(&ts_data->pm_qos_req, PM_QOS_DEFAULT_VALUE);
@@ -1709,6 +1985,22 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
     if (pdata->reset_gpio < 0)
         FTS_ERROR("Unable to get reset_gpio");
 
+    ret = of_property_read_u32(np, "focaltech,tx_ch_num", &temp_val);
+    if (ret < 0) {
+        FTS_ERROR("Unable to get tx_ch_num, please check dts");
+    } else {
+        pdata->tx_ch_num = temp_val;
+        FTS_DEBUG("tx_ch_num = %d", pdata->tx_ch_num);
+    }
+
+    ret = of_property_read_u32(np, "focaltech,rx_ch_num", &temp_val);
+    if (ret < 0) {
+        FTS_ERROR("Unable to get rx_ch_num, please check dts");
+    } else {
+        pdata->rx_ch_num = temp_val;
+        FTS_DEBUG("rx_ch_num = %d", pdata->rx_ch_num);
+    }
+
     pdata->irq_gpio = of_get_named_gpio_flags(np, "focaltech,irq-gpio",
                       0, &pdata->irq_gpio_flags);
     if (pdata->irq_gpio < 0)
@@ -2085,6 +2377,42 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     if (ret) {
         FTS_ERROR("create apk debug node fail");
     }
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    if (!ts_data->heatmap_buff) {
+        int heatmap_buff_len = sizeof(u16) *
+            ((ts_data->pdata->tx_ch_num * ts_data->pdata->rx_ch_num) +
+            ts_data->pdata->tx_ch_num + ts_data->pdata->rx_ch_num);
+        FTS_DEBUG("Allocate heatmap_buff length=%d\n", heatmap_buff_len);
+        ts_data->heatmap_buff = kmalloc(heatmap_buff_len, GFP_KERNEL);
+        if (!ts_data->heatmap_buff) {
+            FTS_ERROR("allocate heatmap_buff failed\n");
+            goto err_irq_req;
+        }
+    }
+#endif
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    /*
+     * Heatmap_probe must be called before irq routine is registered,
+     * because heatmap_read is called from interrupt context.
+    */
+    ts_data->v4l2.parent_dev = ts_data->dev;
+    ts_data->v4l2.input_dev = ts_data->input_dev;
+    ts_data->v4l2.read_frame = v4l2_read_frame;
+    ts_data->v4l2.width = ts_data->pdata->tx_ch_num;
+    ts_data->v4l2.height = ts_data->pdata->rx_ch_num;
+    /* 180 Hz operation */
+    ts_data->v4l2.timeperframe.numerator = 1;
+    ts_data->v4l2.timeperframe.denominator = 180;
+    ts_data->v4l2_mutual_strength_data_ready = false;
+    ret = heatmap_probe(&ts_data->v4l2);
+    if (ret < 0) {
+        FTS_ERROR("heatmap probe unsuccessfully!");
+        goto err_heatmap_probe;
+    } else {
+        FTS_DEBUG("heatmap probe successfully!");
+    }
+#endif
 
     ret = fts_create_sysfs(ts_data);
     if (ret) {
@@ -2201,6 +2529,10 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     return 0;
 
 err_irq_req:
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    heatmap_remove(&ts_data->v4l2);
+err_heatmap_probe:
+#endif
     cpu_latency_qos_remove_request(&ts_data->pm_qos_req);
 #if FTS_POWER_SOURCE_CUST_EN
 err_power_init:
@@ -2244,6 +2576,17 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 #endif
     fts_release_apk_debug_channel(ts_data);
     fts_remove_sysfs(ts_data);
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    if (ts_data->heatmap_buff) {
+        kfree_safe(ts_data->heatmap_buff);
+        ts_data->heatmap_buff = NULL;
+    }
+#endif
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    heatmap_remove(&ts_data->v4l2);
+#endif
     fts_ex_mode_exit(ts_data);
 
     fts_fwupg_exit(ts_data);
@@ -2374,6 +2717,7 @@ static int fts_ts_suspend(struct device *dev)
 #endif
         }
     }
+
     fts_release_all_finger();
     ts_data->suspended = true;
     FTS_FUNC_EXIT();

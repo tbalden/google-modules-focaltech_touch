@@ -200,6 +200,10 @@
 #define GOOGLE_REPORT_MODE                      1
 
 /*
+ * show debug log info for heatmap
+ */
+#define GOOGLE_HEATMAP_DEBUG                    0
+/*
  * show debug log info
  * enable it for debug, disable it for release
  */
