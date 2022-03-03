@@ -1098,7 +1098,7 @@ static ssize_t fts_driverinfo_show(
                       ts_data->ic_info.ids.chip_idh,
                       ts_data->ic_info.ids.chip_idl);
 
-    if (ts_data->bus_type == BUS_TYPE_I2C) {
+    if (ts_data->bus_type == FTS_BUS_TYPE_I2C) {
         count += snprintf(buf + count, PAGE_SIZE, "BUS:%s,addr:0x%x\n",
                           "I2C", ts_data->client->addr);
     } else {

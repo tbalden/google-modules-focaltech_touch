@@ -361,7 +361,7 @@ static int fts_pram_write_buf(struct fts_upgrade *upg, u8 *buf, u32 len)
         if ((i == (packet_number - 1)) && remainder)
             packet_len = remainder;
 
-        if (upg->ts_data->bus_type == BUS_TYPE_SPI_V2) {
+        if (upg->ts_data->bus_type == FTS_BUS_TYPE_SPI_V2) {
             packet_buf[0] = FTS_ROMBOOT_CMD_SET_PRAM_ADDR;
             packet_buf[1] = BYTE_OFF_16(offset);
             packet_buf[2] = BYTE_OFF_8(offset);
@@ -935,7 +935,7 @@ int fts_flash_write_buf(
         if ((i == (packet_number - 1)) && remainder)
             packet_len = remainder;
 
-        if (upg->ts_data->bus_type == BUS_TYPE_SPI_V2) {
+        if (upg->ts_data->bus_type == FTS_BUS_TYPE_SPI_V2) {
             packet_buf[0] = FTS_CMD_SET_WFLASH_ADDR;
             packet_buf[1] = BYTE_OFF_16(addr);
             packet_buf[2] = BYTE_OFF_8(addr);
@@ -1037,7 +1037,7 @@ int fts_flash_read_buf(u32 saddr, u8 *buf, u32 len)
         if ((i == (packet_number - 1)) && remainder)
             packet_len = remainder;
 
-        if (upg->ts_data->bus_type == BUS_TYPE_I2C) {
+        if (upg->ts_data->bus_type == FTS_BUS_TYPE_I2C) {
             wbuf[0] = FTS_CMD_READ;
             wbuf[1] = BYTE_OFF_16(addr);
             wbuf[2] = BYTE_OFF_8(addr);
@@ -1054,7 +1054,7 @@ int fts_flash_read_buf(u32 saddr, u8 *buf, u32 len)
                 FTS_ERROR("pram/bootloader read 03 command fail");
                 return ret;
             }
-        } else if (upg->ts_data->bus_type == BUS_TYPE_SPI_V2) {
+        } else if (upg->ts_data->bus_type == FTS_BUS_TYPE_SPI_V2) {
             wbuf[0] = FTS_CMD_SET_RFLASH_ADDR;
             wbuf[1] = BYTE_OFF_16(addr);
             wbuf[2] = BYTE_OFF_8(addr);
@@ -1072,7 +1072,7 @@ int fts_flash_read_buf(u32 saddr, u8 *buf, u32 len)
                 FTS_ERROR("pram/bootloader read 03(SPI_V2) command fail");
                 return ret;
             }
-        } else if (upg->ts_data->bus_type == BUS_TYPE_SPI) {
+        } else if (upg->ts_data->bus_type == FTS_BUS_TYPE_SPI) {
             wbuf[0] = FTS_CMD_READ;
             wbuf[1] = BYTE_OFF_16(addr);
             wbuf[2] = BYTE_OFF_8(addr);

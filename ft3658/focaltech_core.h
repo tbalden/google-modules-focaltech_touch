@@ -63,6 +63,9 @@
 #include <linux/dma-mapping.h>
 #include <linux/pm_qos.h>
 #include "focaltech_common.h"
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+#include <touch_offload.h>
+#endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 #include <heatmap.h>
 #endif
@@ -146,6 +149,9 @@ struct fts_ts_platform_data {
     u32 x_min;
     u32 y_min;
     u32 max_touch_number;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+    u32 offload_id;
+#endif
     u32 tx_ch_num;
     u32 rx_ch_num;
 };
@@ -229,8 +235,15 @@ struct fts_ts_data {
                         * touch IC, acquired during hard interrupt, in
                         * CLOCK_MONOTONIC */
     ktime_t coords_timestamp;
-#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
+    IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     u16 *heatmap_buff;
+#endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+    struct touch_offload_context offload;
+    struct touch_offload_frame *reserved_frame;
+#endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     bool   v4l2_mutual_strength_data_ready;
     struct v4l2_heatmap v4l2;
 #endif
@@ -262,10 +275,10 @@ struct fts_ts_data {
 };
 
 enum FTS_BUS_TYPE {
-    BUS_TYPE_NONE,
-    BUS_TYPE_I2C,
-    BUS_TYPE_SPI,
-    BUS_TYPE_SPI_V2,
+    FTS_BUS_TYPE_NONE,
+    FTS_BUS_TYPE_I2C,
+    FTS_BUS_TYPE_SPI,
+    FTS_BUS_TYPE_SPI_V2,
 };
 
 #if GOOGLE_REPORT_MODE
