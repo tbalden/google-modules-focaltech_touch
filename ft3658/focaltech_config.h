@@ -246,7 +246,7 @@
  * AOC Gesture function enable
  * 1:enable(default),0:disable
  */
-#define FTS_AOC_GESTURE_EN                     1
+#define FTS_AOC_GESTURE_EN                      1
 
 /*
  * ESD check & protection
