@@ -1296,18 +1296,17 @@ extern void transpose_raw(u8 *src, u8 *dist, int tx, int rx);
 static int fts_get_heatmap(struct fts_ts_data *ts_data) {
     int ret = 0;
     int i;
-    int idx_raw = 0;
     int idx_buff = 0;
-    int heatmap_offset = FTS_CAP_DATA_OFFSET;
     int node_num = 0;
     int self_node = 0;
-    int self_data_len = 0;
-    int self_heatmap_data_len = 0;
+    int self_data_size = 0;
+    int total_heatmap_data_size = 0;
     u8 id_cmd[1] = {0};
     u8 tx = ts_data->pdata->tx_ch_num;
     u8 rx = ts_data->pdata->rx_ch_num;
-    u8 *heatmap_raw = NULL;
-    u8 *trans_raw = NULL;
+    int idx_ms_raw = FTS_CAP_DATA_OFFSET;
+    int idx_ss_tx_raw = 0;
+    int idx_ss_rx_raw = 0;
 
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
     FTS_FUNC_ENTER();
@@ -1315,14 +1314,16 @@ static int fts_get_heatmap(struct fts_ts_data *ts_data) {
 
     node_num = tx * rx;
     self_node = tx + rx;
-    self_data_len = FTS_SELF_DATA_LEN * sizeof(u16);
-    self_heatmap_data_len =
-        FTS_CAP_DATA_OFFSET + node_num * sizeof(u16) + self_data_len;
+    idx_ss_tx_raw = FTS_CAP_DATA_OFFSET + (node_num + rx) * sizeof(u16);
+    idx_ss_rx_raw = FTS_CAP_DATA_OFFSET + node_num * sizeof(u16);
+    self_data_size = FTS_SELF_DATA_LEN * sizeof(u16);
+    total_heatmap_data_size =
+        FTS_CAP_DATA_OFFSET + node_num * sizeof(u16) + self_data_size;
 
     /* The format of heatmap from touch chip
      *
-     * |- mutual data(tx*rx*2) -|- cap(on) data(68*2) -|- cap(off) data(68*2) -|
-     * |-             16*34    -|-  rx(34) + tx(14)   -|- rx(34) + tx(14)     -|
+     * |- cap header (91) -|- mutual data(tx*rx*2) -|- cap(on) data(68*2) -|
+     * |-                 -|-             16*34*2  -|- (34+16)*2          -|
      *
      * Only needs mutual data and cap(on) data.
      */
@@ -1333,71 +1334,48 @@ static int fts_get_heatmap(struct fts_ts_data *ts_data) {
         goto exit;
     }
 
-    heatmap_raw = kzalloc(self_heatmap_data_len, GFP_KERNEL);
-    if (!heatmap_raw) {
-        FTS_ERROR("Failed to malloc memory for heatmap buff.");
-        ret = -ENOMEM;
+    /* Get total heatmap data (cap header(91) + ms + ss). */
+    id_cmd[0] = FTS_CMD_READ_TOUCH_DATA;
+    ret = fts_read(id_cmd, 1, ts_data->heatmap_raw, total_heatmap_data_size);
+    if (ret < 0) {
+        FTS_ERROR("Failed to get heatmap raw data, ret=%d.", ret);
         goto exit;
     }
 
-    trans_raw = kzalloc(node_num * sizeof(u16), GFP_KERNEL);
-    if (!trans_raw) {
-        FTS_ERROR("Failed malloc memory for transpose buff fails.");
-        ret = -ENOMEM;
-        goto heatmap_raw_err;
-    }
-
-    /* Get strength data. */
-    id_cmd[0] = FTS_CMD_READ_TOUCH_DATA;
-    ret = fts_read(id_cmd, 1, heatmap_raw, FTS_CAP_DATA_OFFSET + self_heatmap_data_len);
-    if (ret < 0) {
-        FTS_ERROR("Failed to get heatmap raw data, ret=%d.", ret);
-        goto trans_raw_err;
-    }
-
-    idx_raw = heatmap_offset;
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
-    FTS_DEBUG("start to copy matual data,idx_buff=%d,idx_raw=%d.",
-        idx_buff, idx_raw);
+    FTS_DEBUG("start to copy matual data,idx_buff=%d,idx_ms_raw=%d.",
+        idx_buff, idx_ms_raw);
 #endif
-    /* Transform the order from RX->TX. */
-    transpose_raw(heatmap_raw + idx_raw, trans_raw, tx, rx);
+    /* MS: Transform the order from RX->TX. */
+    transpose_raw(ts_data->heatmap_raw + idx_ms_raw, ts_data->trans_raw, tx, rx);
     /* Copy mutual data. */
     for (i = 0; i < node_num; i++) {
         ((u16*)ts_data->heatmap_buff)[idx_buff++] =
-            (u16)(trans_raw[(i * 2)] << 8) + trans_raw[(i * 2) + 1];
+            (u16)(ts_data->trans_raw[(i * 2)] << 8) +
+            ts_data->trans_raw[(i * 2) + 1];
     }
 
     /* Copy tx self data first */
-    idx_raw = heatmap_offset + (node_num + rx) * sizeof(u16);
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
-    FTS_DEBUG("Start to copy the tx self data,idx_buff=%d,idx_raw=%d.",
-        idx_buff, idx_raw);
+    FTS_DEBUG("Start to copy the tx self data,idx_buff=%d,idx_ss_tx_raw=%d.",
+        idx_buff, idx_ss_tx_raw);
 #endif
     for (i = 0 ; i < tx; i++) {
           ((u16*)ts_data->heatmap_buff)[idx_buff++] =
-             (u16)(heatmap_raw[idx_raw + (i * 2)] << 8) +
-             heatmap_raw[idx_raw +(i * 2) + 1];
+             (u16)(ts_data->heatmap_raw[idx_ss_tx_raw + (i * 2)] << 8) +
+             ts_data->heatmap_raw[idx_ss_tx_raw +(i * 2) + 1];
     }
-#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
-    idx_raw = idx_raw + (i * 2) - 1;
-    FTS_DEBUG("Copy done,idx_buff=%d,idx_raw=%d.",idx_buff, idx_raw);
-#endif
+
     /* Then copy rx self data */
-    idx_raw = heatmap_offset + node_num * sizeof(u16);
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
-    FTS_DEBUG("Start to copy the rx self data,idx_buff=%d,idx_raw=%d.",
-        idx_buff, idx_raw);
+    FTS_DEBUG("Start to copy the rx self data,idx_buff=%d,idx_ss_rx_raw=%d.",
+        idx_buff, idx_ss_rx_raw);
 #endif
     for (i = 0 ; i < rx; i++) {
         ((u16*)ts_data->heatmap_buff)[idx_buff++] =
-            (u16)(heatmap_raw[idx_raw + (i * 2)] << 8) +
-            heatmap_raw[idx_raw + (i * 2) + 1];
+            (u16)(ts_data->heatmap_raw[idx_ss_rx_raw + (i * 2)] << 8) +
+            ts_data->heatmap_raw[idx_ss_rx_raw + (i * 2) + 1];
     }
-#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
-    idx_raw = idx_raw + (i * 2) - 1;
-    FTS_DEBUG("Copy done, idx_raw=%d, idx_buff=%d", idx_raw, idx_buff);
-#endif
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
     /* Show the heatmap data for debugging. */
     fts_show_heatmap_data(ts_data);
@@ -1409,12 +1387,6 @@ static int fts_get_heatmap(struct fts_ts_data *ts_data) {
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
     FTS_FUNC_EXIT();
 #endif
-trans_raw_err:
-    kfree_safe(trans_raw);
-    trans_raw = NULL;
-heatmap_raw_err:
-    kfree_safe(heatmap_raw);
-    heatmap_raw = NULL;
 exit:
     return ret;
 }
@@ -1589,7 +1561,7 @@ static bool v4l2_read_frame(struct v4l2_heatmap *v4l2)
         ret = false;
     }
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
-    FTS_DEBUG("mason set v4l2_mutual_strength_data_ready false");
+    FTS_DEBUG("set v4l2_mutual_strength_data_ready false");
 #endif
     ts_data->v4l2_mutual_strength_data_ready = false;
 
@@ -2621,7 +2593,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     ret = fts_get_ic_information(ts_data);
     if (ret) {
         FTS_ERROR("not focal IC, unregister driver");
-        goto err_irq_req;
+        goto err_power_init;
     }
 
     ret = fts_create_apk_debug_channel(ts_data);
@@ -2669,14 +2641,37 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 
     if (!ts_data->heatmap_buff) {
-        int heatmap_buff_len = sizeof(u16) *
+        int heatmap_buff_size = sizeof(u16) *
             ((ts_data->pdata->tx_ch_num * ts_data->pdata->rx_ch_num) +
             ts_data->pdata->tx_ch_num + ts_data->pdata->rx_ch_num);
-        FTS_DEBUG("Allocate heatmap_buff length=%d\n", heatmap_buff_len);
-        ts_data->heatmap_buff = kmalloc(heatmap_buff_len, GFP_KERNEL);
+        FTS_DEBUG("Allocate heatmap_buff size=%d\n", heatmap_buff_size);
+        ts_data->heatmap_buff = kmalloc(heatmap_buff_size, GFP_KERNEL);
         if (!ts_data->heatmap_buff) {
             FTS_ERROR("allocate heatmap_buff failed\n");
-            goto err_irq_req;
+            goto err_heatmap_buff;
+        }
+    }
+
+    if (!ts_data->heatmap_raw) {
+        int node_num = ts_data->pdata->tx_ch_num * ts_data->pdata->rx_ch_num;
+        int heatmap_raw_size = FTS_CAP_DATA_OFFSET +
+            ((node_num + FTS_SELF_DATA_LEN) * sizeof(u16));
+        FTS_DEBUG("Allocate heatmap_raw size=%d\n", heatmap_raw_size);
+        ts_data->heatmap_raw = kmalloc(heatmap_raw_size, GFP_KERNEL);
+        if (!ts_data->heatmap_raw) {
+            FTS_ERROR("allocate heatmap_raw failed\n");
+            goto err_heatmap_raw;
+        }
+    }
+
+    if (!ts_data->trans_raw) {
+        int node_num = ts_data->pdata->tx_ch_num * ts_data->pdata->rx_ch_num;
+        int trans_raw_size = sizeof(u16) * node_num;
+        FTS_DEBUG("Allocate trans_raw size=%d\n", trans_raw_size);
+        ts_data->trans_raw = kmalloc(trans_raw_size, GFP_KERNEL);
+        if (!ts_data->trans_raw) {
+            FTS_ERROR("allocate trans_raw failed\n");
+            goto err_trans_raw;
         }
     }
 #endif
@@ -2819,14 +2814,33 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     return 0;
 
 err_irq_req:
+    cpu_latency_qos_remove_request(&ts_data->pm_qos_req);
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     heatmap_remove(&ts_data->v4l2);
 err_heatmap_probe:
 #endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
+    IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    if (ts_data->trans_raw) {
+        kfree_safe(ts_data->trans_raw);
+        ts_data->trans_raw = NULL;
+    }
+err_trans_raw:
+    if (ts_data->heatmap_raw) {
+        kfree_safe(ts_data->heatmap_raw);
+        ts_data->heatmap_raw = NULL;
+    }
+err_heatmap_raw:
+    if (ts_data->heatmap_buff) {
+        kfree_safe(ts_data->heatmap_buff);
+        ts_data->heatmap_buff = NULL;
+    }
+err_heatmap_buff:
+#endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
     touch_offload_cleanup(&ts_data->offload);
 #endif
-    cpu_latency_qos_remove_request(&ts_data->pm_qos_req);
+
 #if FTS_POWER_SOURCE_CUST_EN
 err_power_init:
     fts_power_source_exit(ts_data);
@@ -2878,6 +2892,14 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
     if (ts_data->heatmap_buff) {
         kfree_safe(ts_data->heatmap_buff);
         ts_data->heatmap_buff = NULL;
+    }
+    if (ts_data->heatmap_raw) {
+        kfree_safe(ts_data->heatmap_raw);
+        ts_data->heatmap_raw = NULL;
+    }
+    if (ts_data->trans_raw) {
+        kfree_safe(ts_data->trans_raw);
+        ts_data->trans_raw = NULL;
     }
 #endif
 

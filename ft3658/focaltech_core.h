@@ -244,6 +244,8 @@ struct fts_ts_data {
     ktime_t coords_timestamp;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    u8 *heatmap_raw;
+    u8 *trans_raw;
     u16 *heatmap_buff;
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
