@@ -56,7 +56,7 @@
 * Private constant and macro definitions using #define
 *****************************************************************************/
 #if GOOGLE_REPORT_MODE
-const short int hopping_freq[3] = {277, 237, 112};
+const short int hopping_freq[4] = {277, 237, 112, 0};
 #endif
 #define FTS_DRIVER_NAME                     "fts_ts"
 #define FTS_DRIVER_PEN_NAME                 "fts_ts,pen"
@@ -808,6 +808,8 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
     u8 get_regB2_status = 0;
     u8 check_regB2_status = 0;
     u8 work_mode;
+    u8 current_hopping = 0;
+    u8 new_hopping = 0;
 #endif
     ret = fts_read_touchdata(data);
     if (ret) {
@@ -830,10 +832,14 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
             for(i = STATUS_HOPPING; i < STATUS_CNT_END; i++) {
                 switch (i) {
                     case STATUS_HOPPING : // Hopping result
-                        if (check_regB2_status & 0x03) {
+                        current_hopping = current_host_status & 0x03;
+                        new_hopping = get_regB2_status & 0x03;
+                        if (current_hopping != new_hopping &&
+                            current_hopping < 3 &&
+                            new_hopping < 3) {
                             FTS_INFO("-------Hopping from %dKhz to %dKhz\n",
-                                hopping_freq[current_host_status & 0x03],
-                                hopping_freq[get_regB2_status & 0x03]);
+                                hopping_freq[current_hopping],
+                                hopping_freq[new_hopping]);
                         }
                         break;
                     case STATUS_PALM : // Palm result
@@ -2794,8 +2800,10 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 
 #if GOOGLE_REPORT_MODE
     fts_read_reg(FTS_REG_CUSTOMER_STATUS, &current_host_status);
-    FTS_DEBUG("-------Hopping %dKhz\n",
-        hopping_freq[(current_host_status & 0x03)]);
+    if ((current_host_status & 0x03) < 3) {
+        FTS_DEBUG("-------Hopping %dKhz\n",
+            hopping_freq[(current_host_status & 0x03)]);
+    }
     FTS_DEBUG("-------PALM mode = %s\n",
         (current_host_status & (1 << STATUS_PALM)) ? "Enable" : "Disable");
     FTS_DEBUG("-------WATER mode = %s\n",
