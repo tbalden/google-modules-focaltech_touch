@@ -90,6 +90,7 @@ static u8 current_host_status;
 static int fts_ts_suspend(struct device *dev);
 static int fts_ts_resume(struct device *dev);
 static void fts_update_feature_setting(struct fts_ts_data *ts_data);
+static void fts_update_motion_filter(struct fts_ts_data *ts, u8 touches);
 
 int fts_check_cid(struct fts_ts_data *ts_data, u8 id_h)
 {
@@ -622,6 +623,7 @@ static int fts_input_report_b(struct fts_ts_data *data)
     }
     input_set_timestamp(data->input_dev, data->coords_timestamp);
     input_sync(data->input_dev);
+    fts_update_motion_filter(data, data->point_num);
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
     }
 #endif
@@ -1189,6 +1191,66 @@ static void unregister_panel_bridge(struct drm_bridge *bridge)
 }
 #endif
 
+/* Update a state machine used to toggle control of the touch IC's motion
+ * filter.
+ */
+static void fts_update_motion_filter(struct fts_ts_data *ts, u8 touches)
+{
+    /* Motion filter timeout, in milliseconds */
+    const u32 mf_timeout_ms = 500;
+    u8 next_state;
+
+    next_state = ts->mf_state;
+    if (ts->mf_mode == MF_OFF) {
+        next_state = MF_UNFILTERED;
+    } else if (ts->mf_mode == MF_DYNAMIC) {
+        /* Determine the next filter state. The motion filter is enabled by
+        * default and it is disabled while a single finger is touching the
+        * screen. If another finger is touched down or if a timeout expires,
+        * the motion filter is reenabled and remains enabled until all fingers
+        * are lifted.
+        */
+        next_state = ts->mf_state;
+        switch (ts->mf_state) {
+        case MF_FILTERED:
+            if (touches == 1) {
+                next_state = MF_UNFILTERED;
+                ts->mf_downtime = ktime_get();
+            }
+            break;
+        case MF_UNFILTERED:
+            if (touches == 0) {
+                next_state = MF_FILTERED;
+            } else if (touches > 1 || ktime_after(ktime_get(),
+                ktime_add_ms(ts->mf_downtime, mf_timeout_ms))) {
+                next_state = MF_FILTERED_LOCKED;
+            }
+            break;
+        case MF_FILTERED_LOCKED:
+            if (touches == 0)
+                next_state = MF_FILTERED;
+            break;
+        }
+    } else if (ts->mf_mode == MF_ON) {
+        next_state = MF_FILTERED;
+    } else {
+        /* Set MF_DYNAMIC as default when an invalid value is found. */
+        ts->mf_mode = MF_DYNAMIC;
+        return;
+    }
+
+    /* Send command to update firmware continuous report */
+    if ((next_state == MF_UNFILTERED) !=
+        (ts->mf_state == MF_UNFILTERED)) {
+        ts->set_continuously_report =
+            (next_state == MF_UNFILTERED) ? 0x01 : 0x00;
+        PR_LOGD("set firmware continuous report(%s).\n",
+        ts->set_continuously_report ? "Enable" : "Disable");
+        fts_write_reg(FTS_REG_CONTINUOUS_EN, ts->set_continuously_report);
+    }
+    ts->mf_state = next_state;
+}
+
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
@@ -1411,6 +1473,8 @@ static void fts_offload_report(void *handle,
     struct fts_ts_data *ts_data = (struct fts_ts_data *)handle;
     bool touch_down = 0;
     int i;
+    int touch_count = 0;
+
     mutex_lock(&ts_data->report_mutex);
 
     input_set_timestamp(ts_data->input_dev, ts_data->coords_timestamp);
@@ -1418,6 +1482,7 @@ static void fts_offload_report(void *handle,
     for (i = 0; i < MAX_COORDS; i++) {
         if (report->coords[i].status == COORD_STATUS_FINGER) {
             input_mt_slot(ts_data->input_dev, i);
+            touch_count++;
             touch_down = 1;
             input_report_key(ts_data->input_dev, BTN_TOUCH, touch_down);
             input_report_key(ts_data->input_dev, BTN_TOOL_FINGER, touch_down);
@@ -1443,6 +1508,7 @@ static void fts_offload_report(void *handle,
     input_report_key(ts_data->input_dev, BTN_TOOL_FINGER, touch_down);
 
     input_sync(ts_data->input_dev);
+    fts_update_motion_filter(ts_data, touch_count);
 
     mutex_unlock(&ts_data->report_mutex);
 }
@@ -2698,6 +2764,10 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         FTS_DEBUG("heatmap probe successfully!");
     }
 #endif
+
+    /* init motion filter mode and state. */
+    ts_data->mf_mode = MF_DYNAMIC;
+    ts_data->mf_state = MF_UNFILTERED;
 
     ret = fts_create_sysfs(ts_data);
     if (ret) {

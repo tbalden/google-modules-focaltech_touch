@@ -182,6 +182,28 @@ struct pen_event {
     int tool_type;
 };
 
+/* Motion filter finite state machine (FSM) states
+ * MF_FILTERED        - default coordinate filtering
+ * MF_UNFILTERED      - unfiltered single-touch coordinates
+ * MF_FILTERED_LOCKED - filtered coordinates. Locked until touch is lifted.
+ */
+typedef enum {
+    MF_FILTERED,
+    MF_UNFILTERED,
+    MF_FILTERED_LOCKED,
+} motion_filter_state_t;
+
+/* Motion filter mode.
+ *  MF_OFF    : 0 = Always unfilter.
+ *  MF_DYNAMIC: 1 = Dynamic change motion filter.
+ *  MF_ON     : 2 = Always filter by touch FW.
+ */
+enum MF_MODE {
+    MF_OFF,
+    MF_DYNAMIC,
+    MF_ON,
+};
+
 struct fts_ts_data {
     struct i2c_client *client;
     struct spi_device *spi;
@@ -233,6 +255,22 @@ struct fts_ts_data {
     int key_state;
     int touch_point;
     int point_num;
+
+    /* Motion filter mode.
+     *  MF_OFF    : 0 = Always unfilter.
+     *  MF_DYNAMIC: 1 = Dynamic change motion filter.
+     *  MF_ON     : 2 = Always filter by touch FW.
+     */
+    u8 mf_mode;
+    /* Payload for continuously report. */
+    u16 set_continuously_report;
+    /* Motion filter finite state machine (FSM) state */
+    motion_filter_state_t mf_state;
+    /* Time of initial single-finger touch down. This timestamp is used to
+     * compute the duration a single finger is touched before it is lifted.
+     */
+    ktime_t mf_downtime;
+
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     bool enable_fw_heatmap;
 #endif
