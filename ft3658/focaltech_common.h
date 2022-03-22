@@ -130,6 +130,7 @@
 #define FTS_LPTW_REG_SET_E2                 0xE2
 #define FTS_STTW_REG_SET_E3                 0xE3
 #define FTS_GESTURE_MAJOR_MINOR             0xE5
+#define FTS_REG_CONTINUOUS_EN               0xE7
 
 #define FTS_REG_CUSTOMER_STATUS             0xB2    // follow FTS_CUSTOMER_STATUS.
                                                     // bit 0~1 : HOPPING

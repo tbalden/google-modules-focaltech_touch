@@ -2473,6 +2473,85 @@ static const struct file_operations STTW_setting_fops = {
 };
 #endif
 
+/* motion filter mode */
+static ssize_t proc_mf_mode_read(struct file *filp,
+    char __user *buff, size_t count, loff_t *ppos)
+{
+    int cnt = 0;
+    struct fts_ts_data *ts_data = fts_data;
+    char tmpbuf[PROC_BUF_SIZE] = { 0 };
+    loff_t pos = *ppos;
+
+    if (pos)
+        return 0;
+
+    FTS_DEBUG("mf_mode = %u", ts_data->mf_mode);
+    cnt += snprintf(tmpbuf + cnt, PROC_BUF_SIZE - cnt,
+        "%u\n", ts_data->mf_mode);
+
+    if (copy_to_user(buff, tmpbuf, cnt)) {
+        FTS_ERROR("copy to user error");
+        return -EFAULT;
+    }
+
+    *ppos = pos + cnt;
+    return cnt;
+}
+
+/**
+ * Attribute to set motion filter mode.
+ *  0 = Always unfilter.
+ *  1 = Dynamic change motion filter.
+ *  2 = Always filter by touch FW.
+ */
+static ssize_t proc_mf_mode_write(struct file *filp,
+    const char __user *buff, size_t count, loff_t *ppos)
+{
+    int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
+    char tmpbuf[PROC_BUF_SIZE] = { 0 };
+    int mf_mode = 0xFF;
+    int buflen = count;
+
+    if (buflen >= PROC_BUF_SIZE) {
+        FTS_ERROR("proc write length(%d) fails", buflen);
+        return -EINVAL;
+    }
+
+    if (copy_from_user(tmpbuf, buff, buflen)) {
+        FTS_ERROR("copy from user error");
+        return -EFAULT;
+    }
+
+    ret = sscanf(tmpbuf, "%d", &mf_mode);
+    if (ret != 1) {
+        FTS_ERROR("get mode fails,ret=%d", ret);
+        return -EINVAL;
+    }
+    if (mf_mode < 0 || mf_mode > 2) {
+        FTS_ERROR("get mode fails, mf_mode should be in [0,1,2].");
+        return -EINVAL;
+    }
+
+    ts_data->mf_mode = mf_mode;
+    FTS_INFO("switch fw_mode to %u\n", ts_data->mf_mode);
+
+    return count;
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_mf_mode_fops = {
+    .proc_read   = proc_mf_mode_read,
+    .proc_write  = proc_mf_mode_write,
+};
+#else
+static const struct file_operations proc_mf_mode_fops = {
+    .owner  = THIS_MODULE,
+    .read   = proc_mf_mode_read,
+    .write  = proc_mf_mode_write,
+};
+#endif
+
 struct proc_dir_entry *proc_fw_update;
 struct proc_dir_entry *proc_scan_modes;
 struct proc_dir_entry *proc_touch_mode;
@@ -2485,6 +2564,7 @@ struct proc_dir_entry *proc_irq_onoff;
 struct proc_dir_entry *proc_heatmap_onoff;
 struct proc_dir_entry *proc_LPTW_setting;
 struct proc_dir_entry *proc_STTW_setting;
+struct proc_dir_entry *proc_mf_mode;
 
 static int fts_create_ctrl_procs(struct fts_ts_data *ts_data)
 {
@@ -2586,6 +2666,14 @@ static int fts_create_ctrl_procs(struct fts_ts_data *ts_data)
         return ret;
     }
 
+    proc_mf_mode = proc_create_data("mf_mode", S_IRUSR|S_IWUSR,
+        ts_data->proc_touch_entry, &proc_mf_mode_fops, ts_data);
+    if (!proc_mf_mode) {
+        FTS_ERROR("create proc_mf_mode fail");
+        ret = -ENOMEM;
+        return ret;
+    }
+
     FTS_INFO("create control procs succeeds");
     return 0;
 }
@@ -2627,6 +2715,9 @@ static void fts_free_ctrl_procs(void)
 
     if (proc_STTW_setting)
         proc_remove(proc_STTW_setting);
+
+    if (proc_mf_mode)
+        proc_remove(proc_mf_mode);
 }
 
 int fts_create_sysfs(struct fts_ts_data *ts_data)
