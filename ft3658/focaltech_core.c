@@ -129,17 +129,23 @@ int fts_wait_tp_to_valid(void)
 
     do {
         ret = fts_read_reg(FTS_REG_CHIP_ID, &idh);
-        if ((idh == chip_idh) || (fts_check_cid(ts_data, idh) == 0)) {
+        if (ret == -EIO) {
+            FTS_ERROR("Wait tp with unexpected I/O error, ret: %d", ret);
+            return ret;
+        }
+
+        if (ret == 0 && ((idh == chip_idh) || (fts_check_cid(ts_data, idh) == 0))) {
             FTS_INFO("TP Ready,Device ID:0x%02x", idh);
             return 0;
-        } else
-            FTS_DEBUG("TP Not Ready,ReadData:0x%02x,ret:%d", idh, ret);
+        }
 
+        FTS_DEBUG("TP Not Ready,ReadData:0x%02x,ret:%d", idh, ret);
         cnt++;
         msleep(INTERVAL_READ_REG);
     } while ((cnt * INTERVAL_READ_REG) < TIMEOUT_READ_REG);
 
-    return -EIO;
+    FTS_ERROR("Wait tp timeout");
+    return -ETIMEDOUT;
 }
 
 /*****************************************************************************
@@ -3179,6 +3185,7 @@ static int fts_ts_suspend(struct device *dev)
 static int fts_ts_resume(struct device *dev)
 {
     struct fts_ts_data *ts_data = fts_data;
+    int ret = 0;
 
     FTS_FUNC_ENTER();
     if (!ts_data->suspended) {
@@ -3195,7 +3202,15 @@ static int fts_ts_resume(struct device *dev)
         fts_reset_proc(200);
     }
 
-    fts_wait_tp_to_valid();
+    ret = fts_wait_tp_to_valid();
+    if (ret != 0) {
+        FTS_ERROR("Resume has been cancelled by wake up timeout");
+#if FTS_POWER_SOURCE_CUST_EN
+        fts_power_source_suspend(ts_data);
+#endif
+        return ret;
+    }
+
     fts_ex_mode_recovery(ts_data);
 
 #if FTS_ESDCHECK_EN
