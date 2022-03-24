@@ -1479,19 +1479,31 @@ static void fts_offload_report(void *handle,
     bool touch_down = 0;
     int i;
     int touch_count = 0;
+    int tool_type;
 
     mutex_lock(&ts_data->report_mutex);
 
     input_set_timestamp(ts_data->input_dev, ts_data->coords_timestamp);
 
     for (i = 0; i < MAX_COORDS; i++) {
-        if (report->coords[i].status == COORD_STATUS_FINGER) {
+        if (report->coords[i].status != COORD_STATUS_INACTIVE) {
             input_mt_slot(ts_data->input_dev, i);
             touch_count++;
             touch_down = 1;
             input_report_key(ts_data->input_dev, BTN_TOUCH, touch_down);
             input_report_key(ts_data->input_dev, BTN_TOOL_FINGER, touch_down);
-            input_mt_report_slot_state(ts_data->input_dev, MT_TOOL_FINGER, 1);
+            switch (report->coords[i].status) {
+            case COORD_STATUS_EDGE:
+            case COORD_STATUS_PALM:
+            case COORD_STATUS_CANCEL:
+                tool_type = MT_TOOL_PALM;
+                break;
+            case COORD_STATUS_FINGER:
+            default:
+                tool_type = MT_TOOL_FINGER;
+                break;
+            }
+            input_mt_report_slot_state(ts_data->input_dev, tool_type, 1);
             input_report_abs(ts_data->input_dev, ABS_MT_POSITION_X,
                 report->coords[i].x);
             input_report_abs(ts_data->input_dev, ABS_MT_POSITION_Y,
