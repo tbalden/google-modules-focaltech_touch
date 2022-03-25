@@ -1489,7 +1489,7 @@ static void fts_offload_report(void *handle,
 
     mutex_lock(&ts_data->report_mutex);
 
-    input_set_timestamp(ts_data->input_dev, ts_data->coords_timestamp);
+    input_set_timestamp(ts_data->input_dev, report->timestamp);
 
     for (i = 0; i < MAX_COORDS; i++) {
         if (report->coords[i].status != COORD_STATUS_INACTIVE) {
