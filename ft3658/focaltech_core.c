@@ -1468,14 +1468,47 @@ exit:
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 static void fts_offload_set_running(struct fts_ts_data *ts_data, bool running)
 {
-    if (ts_data->offload.offload_running != running) {
-        ts_data->offload.offload_running = running;
+    bool update_en = false;
+
+    ts_data->offload.offload_running = running;
+    /*
+     * Disable firmware grip_suppression/palm_rejection when offload is running
+     * and upper layer grip_suppression/palm_rejection is enabled.
+     */
+    if (running) {
+        if (ts_data->enable_fw_grip < FW_GRIP_FORCE_DISABLE) {
+            int new_fw_grip = ts_data->offload.config.filter_grip ?
+                              FW_GRIP_DISABLE : FW_GRIP_ENABLE;
+            if (ts_data->enable_fw_grip != new_fw_grip) {
+                ts_data->enable_fw_grip = new_fw_grip;
+                update_en = true;
+            }
+        }
+
+        if (ts_data->enable_fw_palm < FW_PALM_FORCE_DISABLE) {
+            int new_fw_palm = ts_data->offload.config.filter_palm ?
+                              FW_PALM_DISABLE : FW_PALM_ENABLE;
+            if (ts_data->enable_fw_palm != new_fw_palm) {
+                ts_data->enable_fw_palm = new_fw_palm;
+                update_en = true;
+            }
+        }
+    } else {
+        if (ts_data->enable_fw_grip < FW_GRIP_FORCE_DISABLE &&
+            ts_data->enable_fw_grip != FTS_DEFAULT_FW_GRIP) {
+            ts_data->enable_fw_grip = FTS_DEFAULT_FW_GRIP;
+            update_en = true;
+        }
+
+        if (ts_data->enable_fw_palm < FW_PALM_FORCE_DISABLE &&
+            ts_data->enable_fw_palm != FTS_DEFAULT_FW_PALM) {
+            ts_data->enable_fw_palm = FTS_DEFAULT_FW_PALM;
+            update_en = true;
+        }
     }
-    if (ts_data->offload.offload_running == ts_data->enable_fw_grip &&
-        ts_data->enable_fw_grip < 2) {
-        ts_data->enable_fw_grip = ts_data->offload.offload_running ? 0 : 1;
+
+    if (update_en)
         fts_update_feature_setting(ts_data);
-    }
 }
 
 static void fts_offload_report(void *handle,
@@ -2693,8 +2726,8 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     ts_data->enable_fw_heatmap = false;
 #endif
-    ts_data->enable_fw_grip = 0x00;
-    ts_data->enable_fw_palm = 0x01;
+    ts_data->enable_fw_grip = FTS_DEFAULT_FW_GRIP;
+    ts_data->enable_fw_palm = FTS_DEFAULT_FW_PALM;
     fts_update_feature_setting(ts_data);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)

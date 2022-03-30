@@ -1784,8 +1784,7 @@ static ssize_t proc_palm_read(struct file *filp, char __user *buff,
     return cnt;
 }
 
-/*
- * Set palm rejection mode.
+/* Set palm rejection mode.
  * 0 - Disable fw palm rejection.
  * 1 - Enable fw palm rejection.
  * 2 - Force disable fw palm rejection.
@@ -1871,8 +1870,7 @@ static ssize_t proc_grip_read(struct file *filp, char __user *buff,
     return cnt;
 }
 
-/*
- * Set Grip suppression mode.
+/* Set Grip suppression mode.
  * 0 - Disable fw grip suppression.
  * 1 - Enable fw grip suppression.
  * 2 - Force disable fw grip suppression.

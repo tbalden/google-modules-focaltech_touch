@@ -146,6 +146,9 @@
 #define FTS_SYSFS_ECHO_ON(buf)      (buf[0] == '1')
 #define FTS_SYSFS_ECHO_OFF(buf)     (buf[0] == '0')
 
+#define FTS_DEFAULT_FW_GRIP                 FW_GRIP_DISABLE
+#define FTS_DEFAULT_FW_PALM                 FW_PALM_ENABLE
+
 #define kfree_safe(pbuf) do {\
     if (pbuf) {\
         kfree(pbuf);\
@@ -201,6 +204,32 @@ enum TOUCH_POWER_MODE {
     FTS_TS_STATE_SUSPEND,
 };
 #endif
+
+/* Firmware Grip suppression mode.
+ * 0 - Disable fw grip suppression.
+ * 1 - Enable fw grip suppression.
+ * 2 - Force disable fw grip suppression.
+ * 3 - Force enable fw grip suppression.
+ */
+enum FW_GRIP_MODE {
+    FW_GRIP_DISABLE,
+    FW_GRIP_ENABLE,
+    FW_GRIP_FORCE_DISABLE,
+    FW_GRIP_FORCE_ENABLE,
+};
+
+/* Firmware Palm rejection mode.
+ * 0 - Disable fw palm rejection.
+ * 1 - Enable fw palm rejection.
+ * 2 - Force disable fw palm rejection.
+ * 3 - Force enable fw palm rejection.
+ */
+enum FW_PALM_MODE {
+    FW_PALM_DISABLE,
+    FW_PALM_ENABLE,
+    FW_PALM_FORCE_DISABLE,
+    FW_PALM_FORCE_ENABLE,
+};
 
 /*****************************************************************************
 * DEBUG function define here
