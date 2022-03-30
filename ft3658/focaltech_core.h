@@ -270,6 +270,7 @@ struct fts_ts_data {
      * compute the duration a single finger is touched before it is lifted.
      */
     ktime_t mf_downtime;
+    ktime_t bugreport_ktime_start;
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     bool enable_fw_heatmap;
