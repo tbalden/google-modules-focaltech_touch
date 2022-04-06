@@ -2550,6 +2550,105 @@ static const struct file_operations proc_mf_mode_fops = {
 };
 #endif
 
+/**
+ * proc_force_active_write()
+ *
+ * Attribute to set different scan mode.
+ * 0x10 - Set FTS_TS_BUS_REF_FORCE_ACTIVE bit 0.
+ * 0x11 - Set FTS_TS_BUS_REF_FORCE_ACTIVE bit 1.
+ * 0x20 - Set FTS_TS_BUS_REF_BUGREPORT bit 0.
+ * 0x21 - Set FTS_TS_BUS_REF_BUGREPORT bit 1.
+ *
+ * @return
+ *    on success, return count; otherwise, return error code
+ */
+static ssize_t proc_force_active_write(struct file *filp,
+    const char __user *buff, size_t count, loff_t *ppos)
+{
+    int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
+    char tmpbuf[PROC_BUF_SIZE] = { 0 };
+    unsigned char input;
+    int buflen = count;
+    bool active;
+    u32 ref = 0;
+
+    if (buflen >= PROC_BUF_SIZE) {
+        FTS_ERROR("proc write length(%d) fails", buflen);
+        ret = -EINVAL;
+        goto exit;
+    }
+
+    if (copy_from_user(tmpbuf, buff, buflen)) {
+        FTS_ERROR("copy from user error");
+        ret = -EFAULT;
+        goto exit;
+    }
+
+    ret = kstrtou8(tmpbuf, 16, &input);
+    if (ret != 0) {
+        FTS_ERROR("get mode fails, ret=%d", ret);
+        ret = -EINVAL;
+        goto exit;
+    }
+    switch (input) {
+    case 0x10:
+        ref = FTS_TS_BUS_REF_FORCE_ACTIVE;
+        active = false;
+        break;
+    case 0x11:
+        ref = FTS_TS_BUS_REF_FORCE_ACTIVE;
+        active = true;
+        break;
+    case 0x20:
+        ref = FTS_TS_BUS_REF_BUGREPORT;
+        active = false;
+        ts_data->bugreport_ktime_start = 0;
+        break;
+    case 0x21:
+        ref = FTS_TS_BUS_REF_BUGREPORT;
+        active = true;
+        ts_data->bugreport_ktime_start = ktime_get();
+        break;
+    default:
+        FTS_ERROR("Invalid input %#x.\n", input);
+        ret = -EINVAL;
+        goto exit;
+    }
+
+    FTS_INFO("Set bus reference bit %#x %s.", ref,
+        active ? "enable" : "disable");
+
+    if (active)
+        pm_stay_awake(ts_data->dev);
+    else
+        pm_relax(ts_data->dev);
+
+    ret = fts_ts_set_bus_ref(ts_data, ref, active);
+    if (ret < 0) {
+        FTS_ERROR("Set bus reference bit %#x %s failed.", ref,
+            active ? "enable" : "disable");
+      goto exit;
+    }
+
+    ret = count;
+
+exit:
+    return ret;
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0))
+static const struct proc_ops proc_force_active_fops = {
+    .proc_write  = proc_force_active_write,
+};
+#else
+static const struct file_operations proc_force_active_fops = {
+    .owner  = THIS_MODULE,
+    .write  = proc_force_active_write,
+};
+#endif
+
+
 struct proc_dir_entry *proc_fw_update;
 struct proc_dir_entry *proc_scan_modes;
 struct proc_dir_entry *proc_touch_mode;
@@ -2563,6 +2662,7 @@ struct proc_dir_entry *proc_heatmap_onoff;
 struct proc_dir_entry *proc_LPTW_setting;
 struct proc_dir_entry *proc_STTW_setting;
 struct proc_dir_entry *proc_mf_mode;
+struct proc_dir_entry *proc_force_active;
 
 static int fts_create_ctrl_procs(struct fts_ts_data *ts_data)
 {
@@ -2672,6 +2772,14 @@ static int fts_create_ctrl_procs(struct fts_ts_data *ts_data)
         return ret;
     }
 
+    proc_force_active = proc_create_data("force_active", S_IRUSR|S_IWUSR,
+        ts_data->proc_touch_entry, &proc_force_active_fops, ts_data);
+    if (!proc_force_active) {
+        FTS_ERROR("create proc_force_active fail");
+        ret = -ENOMEM;
+        return ret;
+    }
+
     FTS_INFO("create control procs succeeds");
     return 0;
 }
@@ -2716,6 +2824,9 @@ static void fts_free_ctrl_procs(void)
 
     if (proc_mf_mode)
         proc_remove(proc_mf_mode);
+
+    if (proc_force_active)
+        proc_remove(proc_force_active);
 }
 
 int fts_create_sysfs(struct fts_ts_data *ts_data)

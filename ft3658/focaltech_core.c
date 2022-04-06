@@ -3183,6 +3183,10 @@ static int fts_ts_suspend(struct device *dev)
     struct fts_ts_data *ts_data = fts_data;
 
     FTS_FUNC_ENTER();
+    if (ts_data->bus_refmask)
+        FTS_DEBUG("bus_refmask 0x%X\n", ts_data->bus_refmask);
+
+
     if (ts_data->suspended) {
         FTS_INFO("Already in suspend state");
         return 0;
@@ -3204,6 +3208,16 @@ static int fts_ts_suspend(struct device *dev)
     if (ts_data->gesture_mode) {
         fts_gesture_suspend(ts_data);
     } else {
+        if (ts_data->bus_refmask == FTS_TS_BUS_REF_BUGREPORT &&
+            ktime_ms_delta(ktime_get(), ts_data->bugreport_ktime_start) >
+            30 * MSEC_PER_SEC) {
+            fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_BUGREPORT, false);
+            pm_relax(ts_data->dev);
+            ts_data->bugreport_ktime_start = 0;
+            FTS_DEBUG("Force release FTS_TS_BUS_REF_BUGREPORT reference bit.");
+            return -EBUSY;
+        }
+
         /* Disable irq */
         fts_irq_disable();
         FTS_DEBUG("make TP enter into sleep mode");
