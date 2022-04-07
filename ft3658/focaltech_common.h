@@ -142,6 +142,7 @@
                                                     // bit 7   : LPWG
 #define FTS_CAP_DATA_OFFSET                 91
 #define FTS_SELF_DATA_LEN                   68
+#define FTS_PRESSURE_SCALE                  85      // 255 / 3
 
 #define FTS_SYSFS_ECHO_ON(buf)      (buf[0] == '1')
 #define FTS_SYSFS_ECHO_OFF(buf)     (buf[0] == '0')

@@ -956,8 +956,9 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
                       (buf[FTS_TOUCH_Y_L_POS + base] & 0xFF);
         events[i].flag = buf[FTS_TOUCH_EVENT_POS + base] >> 6;
         events[i].id = buf[FTS_TOUCH_ID_POS + base] >> 4;
-        events[i].p = ((buf[FTS_TOUCH_AREA_POS + base] << 1) & 0x02) +
-                       (buf[FTS_TOUCH_PRE_POS + base] & 0x01);
+        events[i].p = (((buf[FTS_TOUCH_AREA_POS + base] << 1) & 0x02) +
+                       (buf[FTS_TOUCH_PRE_POS + base] & 0x01)) *
+                       FTS_PRESSURE_SCALE;
         events[i].minor =
             ((buf[FTS_TOUCH_PRE_POS + base] >> 1) & 0x7F) * data->pdata->mm2px;
         events[i].major =
@@ -1841,7 +1842,7 @@ static int fts_input_init(struct fts_ts_data *ts_data)
     input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR, 0, 0x3F, 0, 0);
     input_set_abs_params(input_dev, ABS_MT_TOUCH_MINOR, 0, 0x3F, 0, 0);
 #if FTS_REPORT_PRESSURE_EN
-    input_set_abs_params(input_dev, ABS_MT_PRESSURE, 0, 0x03, 0, 0);
+    input_set_abs_params(input_dev, ABS_MT_PRESSURE, 0, 0xFF, 0, 0);
 #endif
 
     ret = input_register_device(input_dev);
