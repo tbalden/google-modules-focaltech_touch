@@ -2060,8 +2060,6 @@ int fts_test_get_strength(u8 *base_raw, u8 tx, u8 rx)
         goto test_err;
     }
 
-    fts_set_heatmap_mode(false);
-
 test_err:
     FTS_TEST_INFO("====== Test Item: strength test end\n");
     return ret;
