@@ -873,9 +873,9 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
                                 (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
                         }
                         break;
-                    case STATUS_STTW : // STTW result
+                    case STATUS_EDGE_PALM : // Edge palm result
                         if( check_regB2_status & (1 << i)) {
-                            FTS_INFO("-------STTW = %s\n",
+                            FTS_INFO("-------Edge palm = %s\n",
                                 (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
                         }
                         break;
@@ -890,32 +890,6 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
                 }
             }
             current_host_status = get_regB2_status;
-
-            if (buf[2] == 0) {
-                if ((data->log_level >= 2) ||
-                    ((1 == data->log_level) && (FTS_TOUCH_DOWN == events[i].flag))) {
-                    FTS_DEBUG("Skip report key data.");
-                }
-                return -EIO;
-            }
-
-            /* Filter the touch data by report flag. */
-            if (check_regB2_status & (1 << STATUS_PALM)) {
-                if ((data->log_level >= 2) ||
-                    ((1 == data->log_level) && (FTS_TOUCH_DOWN == events[i].flag))) {
-                    FTS_DEBUG("Skip report palm touch data.");
-                }
-                return -EINVAL;
-            }
-
-            if (check_regB2_status & (1 << STATUS_GRIP)) {
-                if ((data->log_level >= 2) ||
-                    ((1 == data->log_level) && (FTS_TOUCH_DOWN == events[i].flag))) {
-                    FTS_DEBUG("Skip report grip touch data.");
-                }
-                return -EINVAL;
-            }
-            /* end of filter the touch data. */
         }
     }
 #endif
@@ -2933,8 +2907,8 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         (current_host_status & (1 << STATUS_GRIP)) ? "Enable" : "Disable");
     FTS_DEBUG("-------GlOVE mode = %s\n",
         (current_host_status & (1 << STATUS_GLOVE)) ? "Enable" : "Disable");
-    FTS_DEBUG("-------STTW = %s\n",
-        (current_host_status & (1 << STATUS_STTW)) ? "Enable" : "Disable");
+    FTS_DEBUG("-------Edge palm %s\n",
+        (current_host_status & (1 << STATUS_EDGE_PALM)) ? "Enable" : "Disable");
     FTS_DEBUG("-------LPTW = %s\n",
         (current_host_status & (1 << STATUS_LPTW)) ? "Enable" : "Disable");
 #endif
