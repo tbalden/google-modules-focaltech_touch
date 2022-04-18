@@ -262,6 +262,7 @@ int fts_test_write(u8 addr, u8 *writebuf, int writelen)
  *******************************************************************/
 int enter_work_mode(void)
 {
+    struct fts_ts_data *ts_data = fts_data;
     int ret = 0;
     u8 mode = 0;
     int i = 0;
@@ -279,8 +280,9 @@ int enter_work_mode(void)
             sys_delay(FACTORY_TEST_DELAY);
             for (j = 0; j < 20; j++) {
                 ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &mode);
-                if ((ret >= 0) && (0x00 == mode)) {
+                if ((ret >= 0) && (mode == FTS_REG_WORKMODE_WORK_VALUE)) {
                     FTS_TEST_INFO("enter work mode success");
+                    ts_data->work_mode = mode;
                     return 0;
                 } else {
                     sys_delay(FACTORY_TEST_DELAY);
@@ -302,6 +304,7 @@ int enter_work_mode(void)
 
 int enter_factory_mode(void)
 {
+    struct fts_ts_data *ts_data = fts_data;
     int ret = 0;
     u8 mode = 0;
     int i = 0;
@@ -317,9 +320,10 @@ int enter_factory_mode(void)
             sys_delay(FACTORY_TEST_DELAY);
             for (j = 0; j < 20; j++) {
                 ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &mode);
-                if ((ret >= 0) && (0x40 == mode)) {
+                if ((ret >= 0) && (mode == FTS_REG_WORKMODE_FACTORY_VALUE)) {
                     FTS_TEST_INFO("enter factory mode success");
                     sys_delay(200);
+                    ts_data->work_mode = mode;
                     return 0;
                 } else {
                     sys_delay(FACTORY_TEST_DELAY);
