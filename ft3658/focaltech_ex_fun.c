@@ -1736,12 +1736,9 @@ static ssize_t proc_hs_write(struct file *filp, const char __user *buff,
         return -EINVAL;
     }
 
-    FTS_INFO("switch high sensitivity mode to %d", hs_mode);
-    ret = fts_write_reg(FTS_REG_GLOVE_MODE_EN, !!hs_mode);
-    if (ret < 0) {
-        FTS_ERROR("write reg0xC0 fails");
-        return ret;
-    }
+    ret = fts_set_glove_mode(!!hs_mode);
+    if (ret < 0)
+      return ret;
 
     return count;
 }

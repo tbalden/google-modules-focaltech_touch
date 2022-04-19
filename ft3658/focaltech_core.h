@@ -263,7 +263,7 @@ struct fts_ts_data {
      */
     u8 mf_mode;
     /* Payload for continuously report. */
-    u16 set_continuously_report;
+    u8 set_continuously_report;
     /* Motion filter finite state machine (FSM) state */
     motion_filter_state_t mf_state;
     /* Time of initial single-finger touch down. This timestamp is used to
@@ -378,6 +378,8 @@ int fts_gesture_resume(struct fts_ts_data *ts_data);
 void fts_set_heatmap_mode(bool en);
 int fts_set_grip_mode(bool en);
 int fts_set_palm_mode(bool en);
+int fts_set_continuous_mode(bool en);
+int fts_set_glove_mode(bool en);
 
 /* Apk and functions */
 int fts_create_apk_debug_channel(struct fts_ts_data *);
@@ -426,7 +428,7 @@ void fts_tp_state_recovery(struct fts_ts_data *ts_data);
 int fts_ex_mode_init(struct fts_ts_data *ts_data);
 int fts_ex_mode_exit(struct fts_ts_data *ts_data);
 int fts_ex_mode_recovery(struct fts_ts_data *ts_data);
-
+void fts_update_feature_setting(struct fts_ts_data *ts_data);
 void fts_irq_disable(void);
 void fts_irq_enable(void);
 

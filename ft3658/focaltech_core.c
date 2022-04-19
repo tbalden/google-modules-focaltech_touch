@@ -89,7 +89,6 @@ static u8 current_host_status;
 #endif
 static int fts_ts_suspend(struct device *dev);
 static int fts_ts_resume(struct device *dev);
-static void fts_update_feature_setting(struct fts_ts_data *ts_data);
 static void fts_update_motion_filter(struct fts_ts_data *ts, u8 touches);
 
 int fts_check_cid(struct fts_ts_data *ts_data, u8 id_h)
@@ -1228,11 +1227,8 @@ static void fts_update_motion_filter(struct fts_ts_data *ts, u8 touches)
     /* Send command to update firmware continuous report */
     if ((next_state == MF_UNFILTERED) !=
         (ts->mf_state == MF_UNFILTERED)) {
-        ts->set_continuously_report =
-            (next_state == MF_UNFILTERED) ? 0x01 : 0x00;
-        PR_LOGD("set firmware continuous report(%s).\n",
-        ts->set_continuously_report ? "Enable" : "Disable");
-        fts_write_reg(FTS_REG_CONTINUOUS_EN, ts->set_continuously_report);
+        bool en = (next_state == MF_UNFILTERED) ? true : false;
+        fts_set_continuous_mode(en);
     }
     ts->mf_state = next_state;
 }
@@ -1443,8 +1439,6 @@ exit:
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 static void fts_offload_set_running(struct fts_ts_data *ts_data, bool running)
 {
-    bool update_en = false;
-
     ts_data->offload.offload_running = running;
     /*
      * Disable firmware grip_suppression/palm_rejection when offload is running
@@ -1456,7 +1450,7 @@ static void fts_offload_set_running(struct fts_ts_data *ts_data, bool running)
                               FW_GRIP_DISABLE : FW_GRIP_ENABLE;
             if (ts_data->enable_fw_grip != new_fw_grip) {
                 ts_data->enable_fw_grip = new_fw_grip;
-                update_en = true;
+                fts_set_grip_mode(ts_data->enable_fw_grip % 2);
             }
         }
 
@@ -1465,25 +1459,22 @@ static void fts_offload_set_running(struct fts_ts_data *ts_data, bool running)
                               FW_PALM_DISABLE : FW_PALM_ENABLE;
             if (ts_data->enable_fw_palm != new_fw_palm) {
                 ts_data->enable_fw_palm = new_fw_palm;
-                update_en = true;
+                fts_set_palm_mode(ts_data->enable_fw_palm % 2);
             }
         }
     } else {
         if (ts_data->enable_fw_grip < FW_GRIP_FORCE_DISABLE &&
             ts_data->enable_fw_grip != FTS_DEFAULT_FW_GRIP) {
             ts_data->enable_fw_grip = FTS_DEFAULT_FW_GRIP;
-            update_en = true;
+            fts_set_grip_mode(ts_data->enable_fw_grip % 2);
         }
 
         if (ts_data->enable_fw_palm < FW_PALM_FORCE_DISABLE &&
             ts_data->enable_fw_palm != FTS_DEFAULT_FW_PALM) {
             ts_data->enable_fw_palm = FTS_DEFAULT_FW_PALM;
-            update_en = true;
+            fts_set_palm_mode(ts_data->enable_fw_palm % 2);
         }
     }
-
-    if (update_en)
-        fts_update_feature_setting(ts_data);
 }
 
 static void fts_offload_report(void *handle,
@@ -2703,6 +2694,8 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 #endif
     ts_data->enable_fw_grip = FTS_DEFAULT_FW_GRIP;
     ts_data->enable_fw_palm = FTS_DEFAULT_FW_PALM;
+    ts_data->set_continuously_report = ENABLE;
+    ts_data->glove_mode = DISABLE;
     fts_update_feature_setting(ts_data);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
@@ -3084,8 +3077,6 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 void fts_set_heatmap_mode(bool en)
 {
     struct fts_ts_data *ts_data = fts_data;
-    if (ts_data->enable_fw_heatmap == en)
-        return;
     if (en == 1){
         fts_write_reg(FTS_REG_HEATMAP_1E, 0x01);
         fts_write_reg(FTS_REG_HEATMAP_ED, 0x00);
@@ -3122,13 +3113,45 @@ int fts_set_palm_mode(bool en)
     struct fts_ts_data *ts_data = fts_data;
 #endif
 
-    ret = fts_write_reg(FTS_REG_PALM_EN, en ? 0x01 : 0x00);
+    ret = fts_write_reg(FTS_REG_PALM_EN, en ? ENABLE : DISABLE);
     if (ret < 0) {
         FTS_ERROR("write reg0xC5 fails");
         return ret;
     }
     FTS_DEBUG("%s fw_palm(%d).\n", en ? "Enable" : "Disable",
         ts_data->enable_fw_palm);
+    return ret;
+}
+
+int fts_set_continuous_mode(bool en)
+{
+    int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
+    u8 value = en ? ENABLE : DISABLE;
+
+    ret =  fts_write_reg(FTS_REG_CONTINUOUS_EN, value);
+    if (ret < 0) {
+        FTS_ERROR("write reg0xE7 fails");
+        return ret;
+    }
+    ts_data->set_continuously_report = value;
+    PR_LOGD("%s firmware continuous report.\n", en ? "Enable" : "Disable");
+    return ret;
+}
+
+int fts_set_glove_mode(bool en)
+{
+    int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
+    u8 value = en ? ENABLE : DISABLE;
+
+    ret =  fts_write_reg(FTS_REG_GLOVE_MODE_EN, value);
+    if (ret < 0) {
+        FTS_ERROR("write reg0xC0 fails");
+        return ret;
+    }
+    ts_data->glove_mode = value;
+    FTS_DEBUG("%s firmware glove mode.\n", en ? "Enable" : "Disable");
     return ret;
 }
 
@@ -3141,7 +3164,7 @@ int fts_set_palm_mode(bool en)
  *    [ in] ts_data: touch driver handle
  *
  */
-static void fts_update_feature_setting(struct fts_ts_data *ts_data)
+void fts_update_feature_setting(struct fts_ts_data *ts_data)
 {
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     fts_set_heatmap_mode(true);
@@ -3150,6 +3173,10 @@ static void fts_update_feature_setting(struct fts_ts_data *ts_data)
     fts_set_grip_mode(ts_data->enable_fw_grip % 2);
 
     fts_set_palm_mode(ts_data->enable_fw_palm % 2);
+
+    fts_set_continuous_mode(ts_data->set_continuously_report);
+
+    fts_set_glove_mode(ts_data->glove_mode);
 }
 
 static int fts_ts_suspend(struct device *dev)

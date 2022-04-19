@@ -1194,6 +1194,10 @@ err_bin:
 #if FTS_ESDCHECK_EN
     fts_esdcheck_switch(ENABLE);
 #endif
+
+    /* Update firmware feature settings after flashing firmware. */
+    fts_update_feature_setting(upg->ts_data);
+
     fts_irq_enable();
     upg->ts_data->fw_loading = 0;
 
@@ -1990,6 +1994,10 @@ static void fts_fwupg_work(struct work_struct *work)
 #if FTS_ESDCHECK_EN
     fts_esdcheck_switch(ENABLE);
 #endif
+
+    /* Update firmware feature settings after flashing firmware. */
+    fts_update_feature_setting(upg->ts_data);
+
     fts_irq_enable();
     upg->ts_data->fw_loading = 0;
 }
