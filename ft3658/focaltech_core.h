@@ -293,7 +293,6 @@ struct fts_ts_data {
     struct touch_offload_frame *reserved_frame;
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    bool   v4l2_mutual_strength_data_ready;
     struct v4l2_heatmap v4l2;
 #endif
     struct proc_dir_entry *proc_touch_entry;

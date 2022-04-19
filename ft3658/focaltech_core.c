@@ -764,13 +764,24 @@ static int fts_input_pen_report(struct fts_ts_data *data)
 
 static int fts_read_touchdata(struct fts_ts_data *data)
 {
-    int ret = 0;
     u8 *buf = data->point_buf;
+    u8 cmd[1] = { 0 };
 
-    memset(buf, 0xFF, data->pnt_buf_size);
-    buf[0] = FTS_CMD_READ_TOUCH_DATA;
+#if IS_ENABLED(GOOGLE_REPORT_MODE)
+    u8 get_regB2_status = 0;
+    u8 check_regB2_status = 0;
+    u8 current_hopping = 0;
+    u8 new_hopping = 0;
+    int i;
+#endif
 
-    ret = fts_read(buf, 1, buf + 1, data->pnt_buf_size - 1);
+    cmd[0] = FTS_CMD_READ_TOUCH_DATA;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
+    IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    fts_get_heatmap(data);
+    memcpy(buf + 1,data->heatmap_raw, data->pnt_buf_size - 1);
+#else
+    int ret = fts_read(cmd, 1, buf + 1, data->pnt_buf_size - 1);
     if (ret < 0) {
         FTS_ERROR("touch data(%x) abnormal,ret:%d", buf[1], ret);
         return -EIO;
@@ -783,42 +794,9 @@ static int fts_read_touchdata(struct fts_ts_data *data)
             return 1;
         }
     }
-
-    if (data->log_level >= 3) {
-        fts_show_touch_buffer(buf, data->pnt_buf_size);
-    }
-
-    return 0;
-}
-
-static int fts_read_parse_touchdata(struct fts_ts_data *data)
-{
-    int ret = 0;
-    int i = 0;
-    u8 pointid = 0;
-    int base = 0;
-    struct ts_event *events = data->events;
-    int max_touch_num = data->pdata->max_touch_number;
-    u8 *buf = data->point_buf;
-#if GOOGLE_REPORT_MODE
-    u8 get_regB2_status = 0;
-    u8 check_regB2_status = 0;
-    u8 current_hopping = 0;
-    u8 new_hopping = 0;
-#endif
-    ret = fts_read_touchdata(data);
-    if (ret) {
-        return ret;
-    }
-
-#if FTS_PEN_EN
-    if ((buf[2] & 0xF0) == 0xB0) {
-        fts_input_pen_report(data);
-        return 2;
-    }
 #endif
 
-#if GOOGLE_REPORT_MODE
+#if IS_ENABLED(GOOGLE_REPORT_MODE)
     if (data->work_mode == FTS_REG_WORKMODE_WORK_VALUE) {
         fts_read_reg(FTS_REG_CUSTOMER_STATUS, &get_regB2_status);
         check_regB2_status = get_regB2_status ^ current_host_status ;
@@ -880,6 +858,36 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
         }
     }
 #endif
+
+    if (data->log_level >= 3) {
+        fts_show_touch_buffer(buf, data->pnt_buf_size);
+    }
+
+    return 0;
+}
+
+static int fts_read_parse_touchdata(struct fts_ts_data *data)
+{
+    int ret = 0;
+    int i = 0;
+    u8 pointid = 0;
+    int base = 0;
+    struct ts_event *events = data->events;
+    int max_touch_num = data->pdata->max_touch_number;
+    u8 *buf = data->point_buf;
+
+    ret = fts_read_touchdata(data);
+    if (ret) {
+        return ret;
+    }
+
+#if FTS_PEN_EN
+    if ((buf[2] & 0xF0) == 0xB0) {
+        fts_input_pen_report(data);
+        return 2;
+    }
+#endif
+
     data->point_num = buf[FTS_TOUCH_POINT_NUM] & 0x0F;
     data->touch_point = 0;
 
@@ -1336,7 +1344,7 @@ static int fts_get_heatmap(struct fts_ts_data *ts_data) {
     int self_node = 0;
     int self_data_size = 0;
     int total_heatmap_data_size = 0;
-    u8 id_cmd[1] = {0};
+    u8 cmd[1] = {0};
     u8 tx = ts_data->pdata->tx_ch_num;
     u8 rx = ts_data->pdata->rx_ch_num;
     int idx_ms_raw = FTS_CAP_DATA_OFFSET;
@@ -1370,8 +1378,8 @@ static int fts_get_heatmap(struct fts_ts_data *ts_data) {
     }
 
     /* Get total heatmap data (cap header(91) + ms + ss). */
-    id_cmd[0] = FTS_CMD_READ_TOUCH_DATA;
-    ret = fts_read(id_cmd, 1, ts_data->heatmap_raw, total_heatmap_data_size);
+    cmd[0] = FTS_CMD_READ_TOUCH_DATA;
+    ret = fts_read(cmd, 1, ts_data->heatmap_raw, total_heatmap_data_size);
     if (ret < 0) {
         FTS_ERROR("Failed to get heatmap raw data, ret=%d.", ret);
         goto exit;
@@ -1414,9 +1422,6 @@ static int fts_get_heatmap(struct fts_ts_data *ts_data) {
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
     /* Show the heatmap data for debugging. */
     fts_show_heatmap_data(ts_data);
-#endif
-#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    ts_data->v4l2_mutual_strength_data_ready = true;
 #endif
 
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
@@ -1597,8 +1602,6 @@ static void fts_populate_frame(struct fts_ts_data *ts_data)
     int i;
     struct touch_offload_frame *frame = ts_data->reserved_frame;
 
-    fts_get_heatmap(ts_data);
-
     frame->header.index = index++;
     frame->header.timestamp = ts_data->coords_timestamp;
 
@@ -1627,27 +1630,17 @@ static bool v4l2_read_frame(struct v4l2_heatmap *v4l2)
 #endif
     if (ts_data->v4l2.width == ts_data->pdata->tx_ch_num &&
         ts_data->v4l2.height == ts_data->pdata->rx_ch_num) {
-        if (ts_data->v4l2_mutual_strength_data_ready) {
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
-            FTS_DEBUG("v4l2 mutual strength data is ready.");
+        FTS_DEBUG("v4l2 mutual strength data is ready.");
 #endif
-            memcpy(v4l2->frame, ts_data->heatmap_buff,
-                ts_data->v4l2.width * ts_data->v4l2.height * sizeof(u16));
-        } else {
-            fts_get_heatmap(ts_data);
-            memcpy(v4l2->frame, ts_data->heatmap_buff,
-                ts_data->v4l2.width * ts_data->v4l2.height * sizeof(u16));
-        }
+        memcpy(v4l2->frame, ts_data->heatmap_buff,
+            ts_data->v4l2.width * ts_data->v4l2.height * sizeof(u16));
     } else {
         FTS_ERROR("size mismatched, (%lu, %lu) vs (%u, %u)!\n",
         ts_data->v4l2.width, ts_data->v4l2.height,
         ts_data->pdata->tx_ch_num, ts_data->pdata->rx_ch_num);
         ret = false;
     }
-#if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
-    FTS_DEBUG("set v4l2_mutual_strength_data_ready false");
-#endif
-    ts_data->v4l2_mutual_strength_data_ready = false;
 
     return ret;
 }
@@ -2773,7 +2766,6 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     /* 180 Hz operation */
     ts_data->v4l2.timeperframe.numerator = 1;
     ts_data->v4l2.timeperframe.denominator = 180;
-    ts_data->v4l2_mutual_strength_data_ready = false;
     ret = heatmap_probe(&ts_data->v4l2);
     if (ret < 0) {
         FTS_ERROR("heatmap probe unsuccessfully!");
