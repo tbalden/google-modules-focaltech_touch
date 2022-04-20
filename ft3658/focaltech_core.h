@@ -271,6 +271,7 @@ struct fts_ts_data {
      */
     ktime_t mf_downtime;
     ktime_t bugreport_ktime_start;
+    u8 work_mode;
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     bool enable_fw_heatmap;

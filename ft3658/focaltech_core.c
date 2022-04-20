@@ -790,17 +790,6 @@ static int fts_read_touchdata(struct fts_ts_data *data)
     return 0;
 }
 
-#if GOOGLE_REPORT_MODE
-static int get_work_mode(void) {
-    int ret = 0;
-    u8 mode = 0;
-    ret = fts_read_reg(FTS_REG_WORKMODE, &mode);
-    if (ret == 0)
-        return mode;
-    return ret;
-}
-#endif
-
 static int fts_read_parse_touchdata(struct fts_ts_data *data)
 {
     int ret = 0;
@@ -813,7 +802,6 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
 #if GOOGLE_REPORT_MODE
     u8 get_regB2_status = 0;
     u8 check_regB2_status = 0;
-    u8 work_mode;
     u8 current_hopping = 0;
     u8 new_hopping = 0;
 #endif
@@ -830,8 +818,7 @@ static int fts_read_parse_touchdata(struct fts_ts_data *data)
 #endif
 
 #if GOOGLE_REPORT_MODE
-    work_mode = get_work_mode();
-    if (work_mode >= 0 && work_mode == FTS_REG_WORKMODE_WORK_VALUE ) {
+    if (data->work_mode == FTS_REG_WORKMODE_WORK_VALUE) {
         fts_read_reg(FTS_REG_CUSTOMER_STATUS, &get_regB2_status);
         check_regB2_status = get_regB2_status ^ current_host_status ;
         if (check_regB2_status) { // current_status is different with previous_status
@@ -2886,6 +2873,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     register_early_suspend(&ts_data->early_suspend);
 #endif
 
+    ts_data->work_mode = FTS_REG_WORKMODE_WORK_VALUE;
 #if GOOGLE_REPORT_MODE
     fts_read_reg(FTS_REG_CUSTOMER_STATUS, &current_host_status);
     if ((current_host_status & 0x03) < 3) {
