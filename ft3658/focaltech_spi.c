@@ -78,6 +78,7 @@ static int fts_spi_transfer(u8 *tx_buf, u8 *rx_buf, u32 len)
         .tx_buf = tx_buf,
         .rx_buf = rx_buf,
         .len    = len,
+        .bits_per_word = len >= 64 ? 32 : 8,
     };
 
     spi_message_init(&msg);
@@ -95,8 +96,11 @@ static int fts_spi_transfer(u8 *tx_buf, u8 *rx_buf, u32 len)
 static void fts_spi_buf_show(u8 *data, int datalen)
 {
     int i = 0;
+    int last_print_index = 0;
     int count = 0;
     int size = 0;
+    int max_cnt = 256;
+    int tmpbuf_size = 0;
     char *tmpbuf = NULL;
 
     if (!data || (datalen <= 0)) {
@@ -104,17 +108,24 @@ static void fts_spi_buf_show(u8 *data, int datalen)
         return;
     }
 
-    size = (datalen > 256) ? 256 : datalen;
-    tmpbuf = kzalloc(1024, GFP_KERNEL);
+    size = (datalen > max_cnt) ? max_cnt : datalen;
+    tmpbuf_size = size * 3;
+    tmpbuf = kzalloc(tmpbuf_size, GFP_KERNEL);
     if (!tmpbuf) {
         FTS_ERROR("tmpbuf zalloc fail");
         return;
     }
 
-    for (i = 0; i < size; i++)
-        count += snprintf(tmpbuf + count, 1024 - count, "%02X ", data[i]);
+    for (i = 0; i < size; i++) {
+        count += scnprintf(tmpbuf + count, tmpbuf_size - count, "%02X ", data[i]);
+        if (i % 16 == 15) {
+          FTS_DEBUG("%03d, %s", last_print_index, tmpbuf + last_print_index);
+          last_print_index = count;
+        }
+    }
+    if (last_print_index != count)
+        FTS_DEBUG("%03d, %s", last_print_index, tmpbuf + last_print_index);
 
-    FTS_DEBUG("%s", tmpbuf);
     if (tmpbuf) {
         kfree(tmpbuf);
         tmpbuf = NULL;
@@ -148,6 +159,7 @@ static int rdata_check(u8 *rdata, u32 rlen)
     crckermit(rdata, rlen - 2, &crc_calc);
     crc_read = (u16)(rdata[rlen - 1] << 8) + rdata[rlen - 2];
     if (crc_calc != crc_read) {
+        FTS_ERROR("crc_calc = 0x%X, crc_read=0x%X",crc_calc, crc_read);
         fts_spi_buf_show(rdata, rlen);
         return -EIO;
     }
@@ -169,6 +181,10 @@ int fts_write(u8 *writebuf, u32 writelen)
     if (!writebuf || !writelen) {
         FTS_ERROR("writebuf/len is invalid");
         return -EINVAL;
+    }
+    /* 4 bytes alignment for DMA mode. */
+    if (txlen_need > 64) {
+        txlen_need = ALIGN(txlen_need, 4);
     }
 
     mutex_lock(&ts_data->bus_lock);
@@ -201,6 +217,10 @@ int fts_write(u8 *writebuf, u32 writelen)
         txlen = txlen + SPI_DUMMY_BYTE;
         memcpy(&txbuf[txlen], &writebuf[1], datalen);
         txlen = txlen + datalen;
+    }
+    /* 4 bytes alignment for DMA mode. */
+    if (txlen > 64) {
+        txlen = ALIGN(txlen, 4);
     }
 
     for (i = 0; i < SPI_RETRY_NUMBER; i++) {
@@ -254,6 +274,8 @@ int fts_read(u8 *cmd, u32 cmdlen, u8 *data, u32 datalen)
     u8 *txbuf = NULL;
     u8 *rxbuf = NULL;
     u32 txlen = 0;
+    u32 aligned_txlen = 0;
+    u32 aligned_datalen = 0;
     u32 txlen_need = datalen + SPI_HEADER_LENGTH + ts_data->dummy_byte;
     u8 ctrl = READ_CMD;
     u32 dp = 0;
@@ -261,6 +283,10 @@ int fts_read(u8 *cmd, u32 cmdlen, u8 *data, u32 datalen)
     if (!cmd || !cmdlen || !data || !datalen) {
         FTS_ERROR("cmd/cmdlen/data/datalen is invalid");
         return -EINVAL;
+    }
+    /* 4 bytes alignment for DMA mode. */
+    if (txlen_need > 64) {
+        txlen_need = ALIGN(txlen_need, 4);
     }
 
     mutex_lock(&ts_data->bus_lock);
@@ -294,14 +320,24 @@ int fts_read(u8 *cmd, u32 cmdlen, u8 *data, u32 datalen)
     if (ctrl & DATA_CRC_EN) {
         txlen = txlen + 2;
     }
+    aligned_txlen = txlen;
+    aligned_datalen = datalen;
+    /* 4 bytes alignment for DMA mode. */
+    if (aligned_txlen > 64) {
+        aligned_txlen = ALIGN(aligned_txlen, 4);
+        /* Calculate new datalen for CRC checking code. */
+        aligned_datalen += aligned_txlen - txlen;
+        txbuf[2] = (aligned_datalen >> 8) & 0xFF;
+        txbuf[3] = aligned_datalen & 0xFF;
+    }
 
     for (i = 0; i < SPI_RETRY_NUMBER; i++) {
-        ret = fts_spi_transfer(txbuf, rxbuf, txlen);
+        ret = fts_spi_transfer(txbuf, rxbuf, aligned_txlen);
         if ((0 == ret) && ((rxbuf[3] & 0xA0) == 0)) {
             memcpy(data, &rxbuf[dp], datalen);
             /* crc check */
             if (ctrl & DATA_CRC_EN) {
-                ret = rdata_check(&rxbuf[dp], txlen - dp);
+                ret = rdata_check(&rxbuf[dp], aligned_txlen - dp);
                 if (ret < 0) {
                     FTS_DEBUG("data read(addr:%x) crc abnormal,retry:%d",
                               cmd[0], i);
