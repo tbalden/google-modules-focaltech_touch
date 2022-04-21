@@ -2655,7 +2655,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 #endif
 
 #if (!FTS_CHIP_IDC)
-    //fts_reset_proc(200);
+    fts_reset_proc(200);
 #endif
 
     ret = fts_get_ic_information(ts_data);
