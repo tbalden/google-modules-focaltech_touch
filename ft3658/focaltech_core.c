@@ -547,6 +547,8 @@ static int fts_input_report_b(struct fts_ts_data *data)
             data->offload.coords[events[i].id].pressure = events[i].p;
             data->offload.coords[events[i].id].major = events[i].major;
             data->offload.coords[events[i].id].minor = events[i].minor;
+            /* Rotation is not supported by firmware */
+            data->offload.coords[events[i].id].rotation = 0;
             if (!data->offload.offload_running) {
 #endif
             input_mt_slot(data->input_dev, events[i].id);
@@ -1511,11 +1513,14 @@ static void fts_offload_report(void *handle,
                 report->coords[i].minor);
             input_report_abs(ts_data->input_dev, ABS_MT_PRESSURE,
                 report->coords[i].pressure);
+            input_report_abs(ts_data->input_dev, ABS_MT_ORIENTATION,
+                report->coords[i].rotation);
         } else {
             input_mt_slot(ts_data->input_dev, i);
             input_report_abs(ts_data->input_dev, ABS_MT_PRESSURE, 0);
             input_mt_report_slot_state(ts_data->input_dev, MT_TOOL_FINGER, 0);
             input_report_abs(ts_data->input_dev, ABS_MT_TRACKING_ID, -1);
+            input_report_abs(ts_data->input_dev, ABS_MT_ORIENTATION, 0);
         }
     }
     input_report_key(ts_data->input_dev, BTN_TOUCH, touch_down);
@@ -1545,6 +1550,7 @@ static void fts_populate_coordinate_channel(struct fts_ts_data *ts_data,
         dc->coords[i].major = ts_data->offload.coords[i].major;
         dc->coords[i].minor = ts_data->offload.coords[i].minor;
         dc->coords[i].pressure = ts_data->offload.coords[i].pressure;
+        dc->coords[i].rotation = ts_data->offload.coords[i].rotation;
         dc->coords[i].status = ts_data->offload.coords[i].status;
     }
 }
@@ -1789,7 +1795,10 @@ static int fts_input_init(struct fts_ts_data *ts_data)
 #if FTS_REPORT_PRESSURE_EN
     input_set_abs_params(input_dev, ABS_MT_PRESSURE, 0, 0xFF, 0, 0);
 #endif
-
+    /* Units are (-4096, 4096), representing the range between rotation
+     * 90 degrees to left and 90 degrees to the right.
+     */
+    input_set_abs_params(input_dev, ABS_MT_ORIENTATION, -4096, 4096, 0, 0);
     ret = input_register_device(input_dev);
     if (ret) {
         FTS_ERROR("Input device registration failed");
@@ -2698,6 +2707,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     ts_data->offload.caps.continuous_reporting = true;
     ts_data->offload.caps.noise_reporting = false;
     ts_data->offload.caps.cancel_reporting = false;
+    ts_data->offload.caps.rotation_reporting = true;
     ts_data->offload.caps.size_reporting = true;
     ts_data->offload.caps.filter_grip = true;
     ts_data->offload.caps.filter_palm = true;
