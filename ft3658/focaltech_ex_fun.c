@@ -1716,6 +1716,7 @@ static ssize_t proc_hs_write(struct file *filp, const char __user *buff,
     size_t count, loff_t *ppos)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     char tmpbuf[PROC_BUF_SIZE] = { 0 };
     int hs_mode = 0xFF;
     int buflen = count;
@@ -1736,7 +1737,7 @@ static ssize_t proc_hs_write(struct file *filp, const char __user *buff,
         return -EINVAL;
     }
 
-    ret = fts_set_glove_mode(!!hs_mode);
+    ret = fts_set_glove_mode(ts_data, !!hs_mode);
     if (ret < 0)
       return ret;
 
@@ -1820,8 +1821,7 @@ static ssize_t proc_palm_write(struct file *filp, const char __user *buff,
     ts_data->enable_fw_palm = palm_mode;
     FTS_INFO("switch fw_aplm to %u\n", ts_data->enable_fw_palm);
 
-    palm_mode = palm_mode % 2;
-    ret = fts_set_palm_mode(palm_mode);
+    ret = fts_set_palm_mode(ts_data, palm_mode);
     if (ret < 0) {
         return ret;
     }
@@ -1905,8 +1905,7 @@ static ssize_t proc_grip_write(struct file *filp, const char __user *buff,
     ts_data->enable_fw_grip = grip_mode;
     FTS_INFO("switch fw_grip to %u\n", ts_data->enable_fw_grip);
 
-    grip_mode = grip_mode % 2;
-    ret = fts_set_grip_mode(grip_mode);
+    ret = fts_set_grip_mode(ts_data, grip_mode);
     if (ret < 0) {
         return ret;
     }
@@ -2118,6 +2117,7 @@ static ssize_t proc_heatmap_onoff_write(struct file *filp,
     const char __user *buff, size_t count, loff_t *ppos)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     char tmpbuf[PROC_BUF_SIZE] = { 0 };
     int mode = 0xFF;
     int buflen = count;
@@ -2139,7 +2139,7 @@ static ssize_t proc_heatmap_onoff_write(struct file *filp,
     }
 
     FTS_INFO("switch heatmap on/off to %d", mode);
-    fts_set_heatmap_mode(mode == 1 ? true : false);
+    fts_set_heatmap_mode(ts_data, !!mode);
 
     return count;
 }

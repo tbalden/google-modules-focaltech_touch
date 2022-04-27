@@ -375,11 +375,11 @@ int fts_gesture_suspend(struct fts_ts_data *ts_data);
 int fts_gesture_resume(struct fts_ts_data *ts_data);
 
 /* Heatmap */
-void fts_set_heatmap_mode(bool en);
-int fts_set_grip_mode(bool en);
-int fts_set_palm_mode(bool en);
-int fts_set_continuous_mode(bool en);
-int fts_set_glove_mode(bool en);
+int fts_set_heatmap_mode(struct fts_ts_data *ts_data, bool en);
+int fts_set_grip_mode(struct fts_ts_data *ts_datam, u8 grip_mode);
+int fts_set_palm_mode(struct fts_ts_data *ts_data, u8 palm_mode);
+int fts_set_continuous_mode(struct fts_ts_data *ts_data, bool en);
+int fts_set_glove_mode(struct fts_ts_data *ts_data, bool en);
 
 /* Apk and functions */
 int fts_create_apk_debug_channel(struct fts_ts_data *);

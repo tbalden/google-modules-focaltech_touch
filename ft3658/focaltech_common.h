@@ -79,6 +79,7 @@
 #define DISABLE                             0
 #define VALID                               1
 #define INVALID                             0
+#define MAX_RETRY_CNT                       3
 #define FTS_CMD_START1                      0x55
 #define FTS_CMD_START2                      0xAA
 #define FTS_CMD_START_DELAY                 12

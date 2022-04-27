@@ -1225,7 +1225,7 @@ static void fts_update_motion_filter(struct fts_ts_data *ts, u8 touches)
     if ((next_state == MF_UNFILTERED) !=
         (ts->mf_state == MF_UNFILTERED)) {
         bool en = (next_state == MF_UNFILTERED) ? true : false;
-        fts_set_continuous_mode(en);
+        fts_set_continuous_mode(ts, en);
     }
     ts->mf_state = next_state;
 }
@@ -1444,7 +1444,7 @@ static void fts_offload_set_running(struct fts_ts_data *ts_data, bool running)
                               FW_GRIP_DISABLE : FW_GRIP_ENABLE;
             if (ts_data->enable_fw_grip != new_fw_grip) {
                 ts_data->enable_fw_grip = new_fw_grip;
-                fts_set_grip_mode(ts_data->enable_fw_grip % 2);
+                fts_set_grip_mode(ts_data, ts_data->enable_fw_grip);
             }
         }
 
@@ -1453,20 +1453,20 @@ static void fts_offload_set_running(struct fts_ts_data *ts_data, bool running)
                               FW_PALM_DISABLE : FW_PALM_ENABLE;
             if (ts_data->enable_fw_palm != new_fw_palm) {
                 ts_data->enable_fw_palm = new_fw_palm;
-                fts_set_palm_mode(ts_data->enable_fw_palm % 2);
+                fts_set_palm_mode(ts_data, ts_data->enable_fw_palm);
             }
         }
     } else {
         if (ts_data->enable_fw_grip < FW_GRIP_FORCE_DISABLE &&
             ts_data->enable_fw_grip != FTS_DEFAULT_FW_GRIP) {
             ts_data->enable_fw_grip = FTS_DEFAULT_FW_GRIP;
-            fts_set_grip_mode(ts_data->enable_fw_grip % 2);
+            fts_set_grip_mode(ts_data, ts_data->enable_fw_grip);
         }
 
         if (ts_data->enable_fw_palm < FW_PALM_FORCE_DISABLE &&
             ts_data->enable_fw_palm != FTS_DEFAULT_FW_PALM) {
             ts_data->enable_fw_palm = FTS_DEFAULT_FW_PALM;
-            fts_set_palm_mode(ts_data->enable_fw_palm % 2);
+            fts_set_palm_mode(ts_data, ts_data->enable_fw_palm);
         }
     }
 }
@@ -3064,84 +3064,111 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
     return 0;
 }
 
-void fts_set_heatmap_mode(bool en)
-{
-    struct fts_ts_data *ts_data = fts_data;
-    if (en == 1){
-        fts_write_reg(FTS_REG_HEATMAP_1E, 0x01);
-        fts_write_reg(FTS_REG_HEATMAP_ED, 0x00);
-        fts_write_reg(FTS_REG_HEATMAP_9E, 0x01);
-    } else {
-        fts_write_reg(FTS_REG_HEATMAP_9E, 0x00);
-        fts_write_reg(FTS_REG_HEATMAP_1E, 0x00);
-    }
-    ts_data->enable_fw_heatmap = en;
-    FTS_DEBUG("%s heatmap.\n", en ? "Enable" : "Disable");
-}
-
-int fts_set_grip_mode(bool en)
-{
+static int fts_write_reg_safe(u8 reg, u8 write_val) {
     int ret = 0;
-#if FTS_DEBUG_EN
-    struct fts_ts_data *ts_data = fts_data;
-#endif
+    int i;
+    int j;
+    u8 reg_val;
 
-    ret = fts_write_reg(FTS_REG_EDGE_MODE_EN, en ? 0x00 : 0xAA);
-    if (ret < 0) {
-        FTS_ERROR("write reg0x8C fails");
-        return ret;
+    for (i = 0; i < MAX_RETRY_CNT; i++) {
+        ret = fts_write_reg(reg, write_val);
+        if (ret < 0) {
+            FTS_DEBUG("write 0x%X failed", reg);
+            return ret;
+        }
+        for (j = 0; j < MAX_RETRY_CNT; j++) {
+            reg_val = 0xFF;
+            ret = fts_read_reg(reg, &reg_val);
+            if (ret < 0) {
+                FTS_DEBUG("read 0x%X failed", reg);
+                return ret;
+            }
+            if (write_val == reg_val) {
+                return ret;
+            }
+            msleep(1);
+        }
+
+        FTS_ERROR("%s failed, reg(0x%X), write_val(0x%x), reg_val(0x%x), " \
+            "retry(%d)", __func__, reg, write_val, reg_val, i);
     }
-    FTS_DEBUG("%s fw_grip(%d).\n", en ? "Enable" : "Disable",
-        ts_data->enable_fw_grip);
+    if (i == MAX_RETRY_CNT)
+        ret = -EIO;
     return ret;
 }
 
-int fts_set_palm_mode(bool en)
+int fts_set_heatmap_mode(struct fts_ts_data *ts_data, bool en)
 {
     int ret = 0;
-#if FTS_DEBUG_EN
-    struct fts_ts_data *ts_data = fts_data;
-#endif
-
-    ret = fts_write_reg(FTS_REG_PALM_EN, en ? ENABLE : DISABLE);
-    if (ret < 0) {
-        FTS_ERROR("write reg0xC5 fails");
-        return ret;
-    }
-    FTS_DEBUG("%s fw_palm(%d).\n", en ? "Enable" : "Disable",
-        ts_data->enable_fw_palm);
-    return ret;
-}
-
-int fts_set_continuous_mode(bool en)
-{
-    int ret = 0;
-    struct fts_ts_data *ts_data = fts_data;
     u8 value = en ? ENABLE : DISABLE;
+    u8 reg = FTS_REG_HEATMAP_9E;
 
-    ret =  fts_write_reg(FTS_REG_CONTINUOUS_EN, value);
-    if (ret < 0) {
-        FTS_ERROR("write reg0xE7 fails");
-        return ret;
-    }
-    ts_data->set_continuously_report = value;
-    PR_LOGD("%s firmware continuous report.\n", en ? "Enable" : "Disable");
+    ret = fts_write_reg_safe(reg, value);
+    if (ret == 0)
+      ts_data->enable_fw_heatmap = en;
+
+    FTS_DEBUG("%s fw_heatmap %s.\n", en ? "Enable" : "Disable",
+        (ret==0) ? "successfully" : "unsuccessfully");
     return ret;
 }
 
-int fts_set_glove_mode(bool en)
+int fts_set_grip_mode(struct fts_ts_data *ts_data, u8 grip_mode)
 {
     int ret = 0;
-    struct fts_ts_data *ts_data = fts_data;
-    u8 value = en ? ENABLE : DISABLE;
+    bool en = grip_mode % 2;
+    u8 value = en ? 0x00 : 0xAA;
+    u8 reg = FTS_REG_EDGE_MODE_EN;
 
-    ret =  fts_write_reg(FTS_REG_GLOVE_MODE_EN, value);
-    if (ret < 0) {
-        FTS_ERROR("write reg0xC0 fails");
-        return ret;
-    }
-    ts_data->glove_mode = value;
-    FTS_DEBUG("%s firmware glove mode.\n", en ? "Enable" : "Disable");
+    ret = fts_write_reg_safe(reg, value);
+
+    FTS_DEBUG("%s fw_grip(%d) %s.\n", en ? "Enable" : "Disable",
+        ts_data->enable_fw_grip,
+        (ret == 0)  ? "successfully" : "unsuccessfully");
+    return ret;
+}
+
+int fts_set_palm_mode(struct fts_ts_data *ts_data, u8 palm_mode)
+{
+    int ret = 0;
+    bool en = palm_mode % 2;
+    u8 value = en ? ENABLE : DISABLE;
+    u8 reg = FTS_REG_PALM_EN;
+
+    ret = fts_write_reg_safe(reg, value);
+
+    FTS_DEBUG("%s fw_palm(%d) %s.\n", en ? "Enable" : "Disable",
+        ts_data->enable_fw_palm,
+        (ret == 0) ? "successfully" : "unsuccessfully");
+    return ret;
+}
+
+int fts_set_continuous_mode(struct fts_ts_data *ts_data, bool en)
+{
+    int ret = 0;
+    u8 value = en ? ENABLE : DISABLE;
+    u8 reg = FTS_REG_CONTINUOUS_EN;
+
+    ret = fts_write_reg_safe(reg, value);
+    if (ret == 0)
+        ts_data->set_continuously_report = value;
+
+    PR_LOGD("%s fw_continuous %s.\n", en ? "Enable" : "Disable",
+        (ret == 0) ? "successfully" : "unsuccessfully");
+    return ret;
+}
+
+int fts_set_glove_mode(struct fts_ts_data *ts_data, bool en)
+{
+    int ret = 0;
+    u8 value = en ? ENABLE : DISABLE;
+    u8 reg = FTS_REG_GLOVE_MODE_EN;
+
+    ret = fts_write_reg_safe(reg, value);
+    if (ret == 0)
+        ts_data->glove_mode = value;
+
+    FTS_DEBUG("%s fw_glove %s.\n", en ? "Enable" : "Disable",
+        (ret == 0) ? "successfully" : "unsuccessfully");
     return ret;
 }
 
@@ -3151,22 +3178,22 @@ int fts_set_glove_mode(bool en)
  * Restore the feature settings after the device resume.
  *
  * @param
- *    [ in] ts_data: touch driver handle
+ *    [ in] ts_data: touch driver handle.
  *
  */
 void fts_update_feature_setting(struct fts_ts_data *ts_data)
 {
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    fts_set_heatmap_mode(true);
+    fts_set_heatmap_mode(ts_data, true);
 #endif
 
-    fts_set_grip_mode(ts_data->enable_fw_grip % 2);
+    fts_set_grip_mode(ts_data, ts_data->enable_fw_grip);
 
-    fts_set_palm_mode(ts_data->enable_fw_palm % 2);
+    fts_set_palm_mode(ts_data, ts_data->enable_fw_palm);
 
-    fts_set_continuous_mode(ts_data->set_continuously_report);
+    fts_set_continuous_mode(ts_data, ts_data->set_continuously_report);
 
-    fts_set_glove_mode(ts_data->glove_mode);
+    fts_set_glove_mode(ts_data, ts_data->glove_mode);
 }
 
 static int fts_ts_suspend(struct device *dev)
@@ -3194,7 +3221,7 @@ static int fts_ts_suspend(struct device *dev)
 #endif
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    fts_set_heatmap_mode(false);
+    fts_set_heatmap_mode(ts_data, false);
 #endif
 
     if (ts_data->gesture_mode) {
@@ -3262,6 +3289,9 @@ static int fts_ts_resume(struct device *dev)
         return ret;
     }
 
+    /* update feature setting. */
+    fts_update_feature_setting(ts_data);
+
     fts_ex_mode_recovery(ts_data);
 
 #if FTS_ESDCHECK_EN
@@ -3273,8 +3303,6 @@ static int fts_ts_resume(struct device *dev)
     } else {
         fts_irq_enable();
     }
-    /* update feature setting. */
-    fts_update_feature_setting(ts_data);
 
     ts_data->suspended = false;
     FTS_FUNC_EXIT();
