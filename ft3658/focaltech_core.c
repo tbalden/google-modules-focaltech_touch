@@ -2907,20 +2907,11 @@ err_heatmap_probe:
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    if (ts_data->trans_raw) {
-        kfree_safe(ts_data->trans_raw);
-        ts_data->trans_raw = NULL;
-    }
+    kfree_safe(ts_data->trans_raw);
 err_trans_raw:
-    if (ts_data->heatmap_raw) {
-        kfree_safe(ts_data->heatmap_raw);
-        ts_data->heatmap_raw = NULL;
-    }
+    kfree_safe(ts_data->heatmap_raw);
 err_heatmap_raw:
-    if (ts_data->heatmap_buff) {
-        kfree_safe(ts_data->heatmap_buff);
-        ts_data->heatmap_buff = NULL;
-    }
+    kfree_safe(ts_data->heatmap_buff);
 err_heatmap_buff:
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
@@ -2970,28 +2961,6 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
     fts_release_apk_debug_channel(ts_data);
     fts_remove_sysfs(ts_data);
 
-#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
-    touch_offload_cleanup(&ts_data->offload);
-#endif
-#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
-    IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    if (ts_data->heatmap_buff) {
-        kfree_safe(ts_data->heatmap_buff);
-        ts_data->heatmap_buff = NULL;
-    }
-    if (ts_data->heatmap_raw) {
-        kfree_safe(ts_data->heatmap_raw);
-        ts_data->heatmap_raw = NULL;
-    }
-    if (ts_data->trans_raw) {
-        kfree_safe(ts_data->trans_raw);
-        ts_data->trans_raw = NULL;
-    }
-#endif
-
-#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    heatmap_remove(&ts_data->v4l2);
-#endif
     fts_ex_mode_exit(ts_data);
 
     fts_fwupg_exit(ts_data);
@@ -3041,6 +3010,19 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 #endif
 #elif defined(CONFIG_HAS_EARLYSUSPEND)
     unregister_early_suspend(&ts_data->early_suspend);
+#endif
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+    touch_offload_cleanup(&ts_data->offload);
+#endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
+    IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    kfree_safe(ts_data->heatmap_buff);
+    kfree_safe(ts_data->heatmap_raw);
+    kfree_safe(ts_data->trans_raw);
+#endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    heatmap_remove(&ts_data->v4l2);
 #endif
 
     if (gpio_is_valid(ts_data->pdata->reset_gpio))
