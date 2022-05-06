@@ -144,12 +144,11 @@
 #define FTS_CAP_DATA_OFFSET                 91
 #define FTS_SELF_DATA_LEN                   68
 #define FTS_PRESSURE_SCALE                  85      // 255 / 3
+#define FTS_CUSTOMER_STATUS_LEN             2
+#define FTS_CUSTOMER_STATUS1_MASK           0x0F
 
 #define FTS_SYSFS_ECHO_ON(buf)      (buf[0] == '1')
 #define FTS_SYSFS_ECHO_OFF(buf)     (buf[0] == '0')
-
-#define FTS_DEFAULT_FW_GRIP                 FW_GRIP_DISABLE
-#define FTS_DEFAULT_FW_PALM                 FW_PALM_ENABLE
 
 #define kfree_safe(pbuf) do {\
     if (pbuf) {\

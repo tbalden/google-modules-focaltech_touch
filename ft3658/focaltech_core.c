@@ -84,13 +84,28 @@ static void fts_populate_frame(struct fts_ts_data *ts_data);
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
 static int fts_get_heatmap(struct fts_ts_data *ts_data);
 #endif
-#if GOOGLE_REPORT_MODE
-static u8 current_host_status;
-#endif
 static int fts_ts_suspend(struct device *dev);
 static int fts_ts_resume(struct device *dev);
 static void fts_update_motion_filter(struct fts_ts_data *ts, u8 touches);
 
+static char *status_list_str[STATUS_CNT_END] = {
+    "Hopping",
+    "reserved",
+    "Palm",
+    "Water",
+    "Grip",
+    "Glove",
+    "Edge palm",
+    "LPTW",
+};
+
+static char *feature_list_str[FW_CNT_END] = {
+    "FW_GLOVE",
+    "FW_GRIP",
+    "FW_PALM",
+    "FW_HEATMAP",
+    "FW_CONTINUOUS",
+};
 int fts_check_cid(struct fts_ts_data *ts_data, u8 id_h)
 {
     int i = 0;
@@ -159,9 +174,7 @@ void fts_tp_state_recovery(struct fts_ts_data *ts_data)
     FTS_FUNC_ENTER();
     /* wait tp stable */
     fts_wait_tp_to_valid();
-    /* recover TP charger state 0x8B */
-    /* recover TP glove state 0xC0 */
-    /* recover TP cover state 0xC1 */
+    /* recover all firmware modes based on the settings of driver side. */
     fts_ex_mode_recovery(ts_data);
     /* recover TP gesture state 0xD0 */
     fts_gesture_recovery(ts_data);
@@ -773,12 +786,13 @@ static int fts_input_pen_report(struct fts_ts_data *data)
 
 static int fts_read_touchdata(struct fts_ts_data *data)
 {
+    int ret = 0;
     u8 *buf = data->point_buf;
     u8 cmd[1] = { 0 };
 
 #if IS_ENABLED(GOOGLE_REPORT_MODE)
-    u8 get_regB2_status = 0;
-    u8 check_regB2_status = 0;
+    u8 regB2_data[FTS_CUSTOMER_STATUS_LEN] = { 0 };
+    u8 check_regB2_status[2] = { 0 };
     u8 current_hopping = 0;
     u8 new_hopping = 0;
     int i;
@@ -787,10 +801,12 @@ static int fts_read_touchdata(struct fts_ts_data *data)
     cmd[0] = FTS_CMD_READ_TOUCH_DATA;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    fts_get_heatmap(data);
+    ret = fts_get_heatmap(data);
+    if (ret < 0)
+        return ret;
     memcpy(buf + 1,data->heatmap_raw, data->pnt_buf_size - 1);
 #else
-    int ret = fts_read(cmd, 1, buf + 1, data->pnt_buf_size - 1);
+    ret = fts_read(cmd, 1, buf + 1, data->pnt_buf_size - 1);
     if (ret < 0) {
         FTS_ERROR("touch data(%x) abnormal,ret:%d", buf[1], ret);
         return -EIO;
@@ -798,7 +814,7 @@ static int fts_read_touchdata(struct fts_ts_data *data)
 
     if (data->gesture_mode) {
         ret = fts_gesture_readdata(data, buf + FTS_TOUCH_DATA_LEN);
-        if (0 == ret) {
+        if (ret == 0) {
             FTS_INFO("succuss to get gesture data in irq handler");
             return 1;
         }
@@ -807,63 +823,54 @@ static int fts_read_touchdata(struct fts_ts_data *data)
 
 #if IS_ENABLED(GOOGLE_REPORT_MODE)
     if (data->work_mode == FTS_REG_WORKMODE_WORK_VALUE) {
-        fts_read_reg(FTS_REG_CUSTOMER_STATUS, &get_regB2_status);
-        check_regB2_status = get_regB2_status ^ current_host_status ;
-        if (check_regB2_status) { // current_status is different with previous_status
+        cmd[0] = FTS_REG_CUSTOMER_STATUS;
+        fts_read(cmd,1, regB2_data, FTS_CUSTOMER_STATUS_LEN);
+        check_regB2_status[0] = regB2_data[0] ^ data->current_host_status[0] ;
+        if (check_regB2_status[0]) { // current_status is different with previous_status
             for(i = STATUS_HOPPING; i < STATUS_CNT_END; i++) {
-                switch (i) {
-                    case STATUS_HOPPING : // Hopping result
-                        current_hopping = current_host_status & 0x03;
-                        new_hopping = get_regB2_status & 0x03;
-                        if (current_hopping != new_hopping &&
-                            current_hopping < 3 &&
-                            new_hopping < 3) {
-                            FTS_INFO("-------Hopping from %dKhz to %dKhz\n",
-                                hopping_freq[current_hopping],
-                                hopping_freq[new_hopping]);
-                        }
-                        break;
-                    case STATUS_PALM : // Palm result
-                        if (check_regB2_status & (1 << i)) {
-                            FTS_INFO("-------PALM mode = %s\n",
-                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                        }
-                        break;
-                    case STATUS_WATER : // Water result
-                        if (check_regB2_status & (1 << i)) {
-                            FTS_INFO("-------WATER mode = %s\n",
-                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                        }
-                        break;
-                    case STATUS_GRIP : // Grip result
-                        if( check_regB2_status & (1 << i)) {
-                            FTS_INFO("-------GRIP mode = %s\n",
-                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                        }
-                        break;
-                    case STATUS_GLOVE : // Glove result
-                        if( check_regB2_status & (1 << i)) {
-                            FTS_INFO("-------GlOVE mode = %s\n",
-                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                        }
-                        break;
-                    case STATUS_EDGE_PALM : // Edge palm result
-                        if( check_regB2_status & (1 << i)) {
-                            FTS_INFO("-------Edge palm = %s\n",
-                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                        }
-                        break;
-                    case STATUS_LPTW : // LPTW result
-                        if( check_regB2_status & (1 << i)) {
-                            FTS_INFO("-------LPTW = %s\n",
-                                (get_regB2_status & (1 << i)) ? "Enable" : "Disable" );
-                        }
-                        break;
-                    default:
-                        break;
+                if (i == STATUS_HOPPING) {
+                    current_hopping = data->current_host_status[0] & 0x03;
+                    new_hopping = regB2_data[0] & 0x03;
+                    if (current_hopping != new_hopping &&
+                        current_hopping < 3 &&
+                        new_hopping < 3) {
+                        FTS_INFO("-------%s (%dKhz => %dKhz)\n",
+                            status_list_str[i],
+                            hopping_freq[current_hopping],
+                            hopping_freq[new_hopping]);
+                        i++;
+                    }
+                } else {
+                    bool status_changed = check_regB2_status[0] & (1 << i);
+                    bool new_status = regB2_data[0] & (1 << i);
+                    if (status_changed)
+                        FTS_INFO("-------%s %s\n", status_list_str[i],
+                            new_status ? "enter" : "exit");
                 }
             }
-            current_host_status = get_regB2_status;
+            data->current_host_status[0] = regB2_data[0];
+        }
+        check_regB2_status[1] =
+            (regB2_data[1] ^ data->current_host_status[1]) & FTS_CUSTOMER_STATUS1_MASK;
+        if (check_regB2_status[1]) {
+            bool feature_changed;
+            bool feature_enabled;
+            FTS_ERROR("FW settings dose not match host side, host: 0x%x, B2[1]:0x%x\n",
+                data->current_host_status[1], regB2_data[1]);
+            for(i = FW_GLOVE; i < FW_CNT_END; i++) {
+                feature_changed = check_regB2_status[1] & (1 << i);
+                feature_enabled = regB2_data[1] & (1 << i);
+                if (feature_changed) {
+                    FTS_INFO("-------%s setting %s\n", feature_list_str[i],
+                        feature_enabled ? "enable" : "disable");
+                }
+            }
+            /* The status in data->current_host_status[1] are updated in
+             * fts_update_host_feature_setting().
+             */
+
+            /* recover touch firmware state. */
+            fts_tp_state_recovery(data);
         }
     }
 #endif
@@ -872,7 +879,7 @@ static int fts_read_touchdata(struct fts_ts_data *data)
         fts_show_touch_buffer(buf, data->pnt_buf_size);
     }
 
-    return 0;
+    return ret;
 }
 
 static int fts_read_parse_touchdata(struct fts_ts_data *data)
@@ -1466,14 +1473,14 @@ static void fts_offload_set_running(struct fts_ts_data *ts_data, bool running)
         }
     } else {
         if (ts_data->enable_fw_grip < FW_GRIP_FORCE_DISABLE &&
-            ts_data->enable_fw_grip != FTS_DEFAULT_FW_GRIP) {
-            ts_data->enable_fw_grip = FTS_DEFAULT_FW_GRIP;
+            ts_data->enable_fw_grip != FW_GRIP_ENABLE) {
+            ts_data->enable_fw_grip = FW_GRIP_ENABLE;
             fts_set_grip_mode(ts_data, ts_data->enable_fw_grip);
         }
 
         if (ts_data->enable_fw_palm < FW_PALM_FORCE_DISABLE &&
-            ts_data->enable_fw_palm != FTS_DEFAULT_FW_PALM) {
-            ts_data->enable_fw_palm = FTS_DEFAULT_FW_PALM;
+            ts_data->enable_fw_palm != FW_PALM_ENABLE) {
+            ts_data->enable_fw_palm = FW_PALM_ENABLE;
             fts_set_palm_mode(ts_data, ts_data->enable_fw_palm);
         }
     }
@@ -2693,11 +2700,14 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         FTS_ERROR("create apk debug node fail");
     }
 
+#if GOOGLE_REPORT_MODE
+    memset(ts_data->current_host_status, 0, FTS_CUSTOMER_STATUS_LEN);
+#endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     ts_data->enable_fw_heatmap = false;
 #endif
-    ts_data->enable_fw_grip = FTS_DEFAULT_FW_GRIP;
-    ts_data->enable_fw_palm = FTS_DEFAULT_FW_PALM;
+    ts_data->enable_fw_grip = FW_GRIP_ENABLE;
+    ts_data->enable_fw_palm = FW_GRIP_ENABLE;
     ts_data->set_continuously_report = ENABLE;
     ts_data->glove_mode = DISABLE;
     fts_update_feature_setting(ts_data);
@@ -2892,23 +2902,23 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 
     ts_data->work_mode = FTS_REG_WORKMODE_WORK_VALUE;
 #if GOOGLE_REPORT_MODE
-    fts_read_reg(FTS_REG_CUSTOMER_STATUS, &current_host_status);
-    if ((current_host_status & 0x03) < 3) {
+    fts_read_reg(FTS_REG_CUSTOMER_STATUS, &ts_data->current_host_status[0]);
+    if ((ts_data->current_host_status[0] & 0x03) < 3) {
         FTS_DEBUG("-------Hopping %dKhz\n",
-            hopping_freq[(current_host_status & 0x03)]);
+            hopping_freq[(ts_data->current_host_status[0] & 0x03)]);
     }
-    FTS_DEBUG("-------PALM mode = %s\n",
-        (current_host_status & (1 << STATUS_PALM)) ? "Enable" : "Disable");
-    FTS_DEBUG("-------WATER mode = %s\n",
-        (current_host_status & (1 << STATUS_WATER)) ? "Enable" : "Disable");
-    FTS_DEBUG("-------GRIP mode = %s\n",
-        (current_host_status & (1 << STATUS_GRIP)) ? "Enable" : "Disable");
-    FTS_DEBUG("-------GlOVE mode = %s\n",
-        (current_host_status & (1 << STATUS_GLOVE)) ? "Enable" : "Disable");
-    FTS_DEBUG("-------Edge palm %s\n",
-        (current_host_status & (1 << STATUS_EDGE_PALM)) ? "Enable" : "Disable");
-    FTS_DEBUG("-------LPTW = %s\n",
-        (current_host_status & (1 << STATUS_LPTW)) ? "Enable" : "Disable");
+    FTS_INFO("-------Palm mode %s\n",
+        (ts_data->current_host_status[0] & (1 << STATUS_PALM)) ? "enter" : "exit");
+    FTS_INFO("-------Water mode %s\n",
+        (ts_data->current_host_status[0] & (1 << STATUS_WATER)) ? "enter" : "exit");
+    FTS_INFO("-------Grip mode %s\n",
+        (ts_data->current_host_status[0] & (1 << STATUS_GRIP)) ? "enter" : "exit");
+    FTS_INFO("-------Glove mode %s\n",
+        (ts_data->current_host_status[0] & (1 << STATUS_GLOVE)) ? "enter" : "exit");
+    FTS_INFO("-------Edge palm %s\n",
+        (ts_data->current_host_status[0] & (1 << STATUS_EDGE_PALM)) ? "enter" : "exit");
+    FTS_INFO("-------LPTW %s\n",
+        (ts_data->current_host_status[0] & (1 << STATUS_LPTW)) ? "enter" : "exit");
 #endif
 
     FTS_FUNC_EXIT();
@@ -3097,6 +3107,14 @@ static int fts_write_reg_safe(u8 reg, u8 write_val) {
     return ret;
 }
 
+static void fts_update_host_feature_setting(struct fts_ts_data *ts_data,
+    bool en, u8 fw_mode_setting){
+    if (en)
+        ts_data->current_host_status[1] |= 1 << fw_mode_setting;
+    else
+        ts_data->current_host_status[1] &= ~(1 << fw_mode_setting);
+}
+
 int fts_set_heatmap_mode(struct fts_ts_data *ts_data, bool en)
 {
     int ret = 0;
@@ -3104,8 +3122,10 @@ int fts_set_heatmap_mode(struct fts_ts_data *ts_data, bool en)
     u8 reg = FTS_REG_HEATMAP_9E;
 
     ret = fts_write_reg_safe(reg, value);
-    if (ret == 0)
+    if (ret == 0) {
       ts_data->enable_fw_heatmap = en;
+      fts_update_host_feature_setting(ts_data, en, FW_HEATMAP);
+    }
 
     FTS_DEBUG("%s fw_heatmap %s.\n", en ? "Enable" : "Disable",
         (ret==0) ? "successfully" : "unsuccessfully");
@@ -3120,6 +3140,9 @@ int fts_set_grip_mode(struct fts_ts_data *ts_data, u8 grip_mode)
     u8 reg = FTS_REG_EDGE_MODE_EN;
 
     ret = fts_write_reg_safe(reg, value);
+    if (ret == 0) {
+        fts_update_host_feature_setting(ts_data, en, FW_GRIP);
+    }
 
     FTS_DEBUG("%s fw_grip(%d) %s.\n", en ? "Enable" : "Disable",
         ts_data->enable_fw_grip,
@@ -3135,6 +3158,9 @@ int fts_set_palm_mode(struct fts_ts_data *ts_data, u8 palm_mode)
     u8 reg = FTS_REG_PALM_EN;
 
     ret = fts_write_reg_safe(reg, value);
+    if (ret == 0) {
+        fts_update_host_feature_setting(ts_data, en, FW_PALM);
+    }
 
     FTS_DEBUG("%s fw_palm(%d) %s.\n", en ? "Enable" : "Disable",
         ts_data->enable_fw_palm,
@@ -3149,8 +3175,10 @@ int fts_set_continuous_mode(struct fts_ts_data *ts_data, bool en)
     u8 reg = FTS_REG_CONTINUOUS_EN;
 
     ret = fts_write_reg_safe(reg, value);
-    if (ret == 0)
+    if (ret == 0) {
         ts_data->set_continuously_report = value;
+        fts_update_host_feature_setting(ts_data, en, FW_CONTINUOUS);
+    }
 
     PR_LOGD("%s fw_continuous %s.\n", en ? "Enable" : "Disable",
         (ret == 0) ? "successfully" : "unsuccessfully");
@@ -3164,8 +3192,10 @@ int fts_set_glove_mode(struct fts_ts_data *ts_data, bool en)
     u8 reg = FTS_REG_GLOVE_MODE_EN;
 
     ret = fts_write_reg_safe(reg, value);
-    if (ret == 0)
+    if (ret == 0) {
         ts_data->glove_mode = value;
+        fts_update_host_feature_setting(ts_data, en, FW_GLOVE);
+    }
 
     FTS_DEBUG("%s fw_glove %s.\n", en ? "Enable" : "Disable",
         (ret == 0) ? "successfully" : "unsuccessfully");
@@ -3288,9 +3318,6 @@ static int fts_ts_resume(struct device *dev)
 #endif
         return ret;
     }
-
-    /* update feature setting. */
-    fts_update_feature_setting(ts_data);
 
     fts_ex_mode_recovery(ts_data);
 

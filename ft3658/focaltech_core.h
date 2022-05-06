@@ -256,6 +256,10 @@ struct fts_ts_data {
     int touch_point;
     int point_num;
 
+#if GOOGLE_REPORT_MODE
+    u8 current_host_status[FTS_CUSTOMER_STATUS_LEN];
+#endif
+
     /* Motion filter mode.
      *  MF_OFF    : 0 = Always unfilter.
      *  MF_DYNAMIC: 1 = Dynamic change motion filter.
@@ -340,6 +344,15 @@ enum FTS_CUSTOMER_STATUS {
     STATUS_EDGE_PALM,
     STATUS_LPTW,
     STATUS_CNT_END,
+};
+
+enum FTS_FW_MODE_SETTING{
+    FW_GLOVE = 0,
+    FW_GRIP,
+    FW_PALM,
+    FW_HEATMAP,
+    FW_CONTINUOUS,
+    FW_CNT_END,
 };
 #endif
 
