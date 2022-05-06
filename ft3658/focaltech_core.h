@@ -63,6 +63,12 @@
 #include <linux/dma-mapping.h>
 #include <linux/pm_qos.h>
 #include "focaltech_common.h"
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+#include <touch_offload.h>
+#endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+#include <heatmap.h>
+#endif
 
 /*****************************************************************************
 * Private constant and macro definitions using #define
@@ -143,6 +149,13 @@ struct fts_ts_platform_data {
     u32 x_min;
     u32 y_min;
     u32 max_touch_number;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+    u32 offload_id;
+#endif
+    u32 tx_ch_num;
+    u32 rx_ch_num;
+    /* convert mm to pixel for major and minor */
+    u8 mm2px;
 };
 
 struct ts_event {
@@ -167,6 +180,28 @@ struct pen_event {
     int tilt_x;
     int tilt_y;
     int tool_type;
+};
+
+/* Motion filter finite state machine (FSM) states
+ * MF_FILTERED        - default coordinate filtering
+ * MF_UNFILTERED      - unfiltered single-touch coordinates
+ * MF_FILTERED_LOCKED - filtered coordinates. Locked until touch is lifted.
+ */
+typedef enum {
+    MF_FILTERED,
+    MF_UNFILTERED,
+    MF_FILTERED_LOCKED,
+} motion_filter_state_t;
+
+/* Motion filter mode.
+ *  MF_OFF    : 0 = Always unfilter.
+ *  MF_DYNAMIC: 1 = Dynamic change motion filter.
+ *  MF_ON     : 2 = Always filter by touch FW.
+ */
+enum MF_MODE {
+    MF_OFF,
+    MF_DYNAMIC,
+    MF_ON,
 };
 
 struct fts_ts_data {
@@ -220,9 +255,46 @@ struct fts_ts_data {
     int key_state;
     int touch_point;
     int point_num;
-    ktime_t timestamp; /* Time that the event was first received from the
+
+    /* Motion filter mode.
+     *  MF_OFF    : 0 = Always unfilter.
+     *  MF_DYNAMIC: 1 = Dynamic change motion filter.
+     *  MF_ON     : 2 = Always filter by touch FW.
+     */
+    u8 mf_mode;
+    /* Payload for continuously report. */
+    u8 set_continuously_report;
+    /* Motion filter finite state machine (FSM) state */
+    motion_filter_state_t mf_state;
+    /* Time of initial single-finger touch down. This timestamp is used to
+     * compute the duration a single finger is touched before it is lifted.
+     */
+    ktime_t mf_downtime;
+    ktime_t bugreport_ktime_start;
+    u8 work_mode;
+
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    bool enable_fw_heatmap;
+#endif
+    u8 enable_fw_grip;
+    u8 enable_fw_palm;
+    ktime_t isr_timestamp; /* Time that the event was first received from the
                         * touch IC, acquired during hard interrupt, in
                         * CLOCK_MONOTONIC */
+    ktime_t coords_timestamp;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
+    IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    u8 *heatmap_raw;
+    u8 *trans_raw;
+    u16 *heatmap_buff;
+#endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+    struct touch_offload_context offload;
+    struct touch_offload_frame *reserved_frame;
+#endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+    struct v4l2_heatmap v4l2;
+#endif
     struct proc_dir_entry *proc_touch_entry;
     struct regulator *avdd;
     struct regulator *dvdd;
@@ -251,10 +323,10 @@ struct fts_ts_data {
 };
 
 enum FTS_BUS_TYPE {
-    BUS_TYPE_NONE,
-    BUS_TYPE_I2C,
-    BUS_TYPE_SPI,
-    BUS_TYPE_SPI_V2,
+    FTS_BUS_TYPE_NONE,
+    FTS_BUS_TYPE_I2C,
+    FTS_BUS_TYPE_SPI,
+    FTS_BUS_TYPE_SPI_V2,
 };
 
 #if GOOGLE_REPORT_MODE
@@ -264,7 +336,7 @@ enum FTS_CUSTOMER_STATUS {
     STATUS_WATER,
     STATUS_GRIP,
     STATUS_GLOVE,
-    STATUS_STTW,
+    STATUS_EDGE_PALM,
     STATUS_LPTW,
     STATUS_CNT_END,
 };
@@ -301,6 +373,13 @@ void fts_gesture_recovery(struct fts_ts_data *ts_data);
 int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data);
 int fts_gesture_suspend(struct fts_ts_data *ts_data);
 int fts_gesture_resume(struct fts_ts_data *ts_data);
+
+/* Heatmap */
+int fts_set_heatmap_mode(struct fts_ts_data *ts_data, bool en);
+int fts_set_grip_mode(struct fts_ts_data *ts_datam, u8 grip_mode);
+int fts_set_palm_mode(struct fts_ts_data *ts_data, u8 palm_mode);
+int fts_set_continuous_mode(struct fts_ts_data *ts_data, bool en);
+int fts_set_glove_mode(struct fts_ts_data *ts_data, bool en);
 
 /* Apk and functions */
 int fts_create_apk_debug_channel(struct fts_ts_data *);
@@ -349,7 +428,7 @@ void fts_tp_state_recovery(struct fts_ts_data *ts_data);
 int fts_ex_mode_init(struct fts_ts_data *ts_data);
 int fts_ex_mode_exit(struct fts_ts_data *ts_data);
 int fts_ex_mode_recovery(struct fts_ts_data *ts_data);
-
+void fts_update_feature_setting(struct fts_ts_data *ts_data);
 void fts_irq_disable(void);
 void fts_irq_enable(void);
 

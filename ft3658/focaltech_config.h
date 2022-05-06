@@ -200,6 +200,10 @@
 #define GOOGLE_REPORT_MODE                      1
 
 /*
+ * show debug log info for heatmap
+ */
+#define GOOGLE_HEATMAP_DEBUG                    0
+/*
  * show debug log info
  * enable it for debug, disable it for release
  */
@@ -242,7 +246,7 @@
  * AOC Gesture function enable
  * 1:enable(default),0:disable
  */
-#define FTS_AOC_GESTURE_EN                     1
+#define FTS_AOC_GESTURE_EN                      1
 
 /*
  * ESD check & protection

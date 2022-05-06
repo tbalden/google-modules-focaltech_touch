@@ -67,14 +67,19 @@
 
 #define FTS_MAX_CHIP_IDS        8
 
-#define FTS_CHIP_TYPE_MAPPING {{0x88, 0x56, 0x52, 0x00, 0x00, 0x00, 0x00, 0x56, 0xB2}}
+#define FTS_CHIP_TYPE_MAPPING   {{0x88, 0x56, 0x52, 0x00, 0x00, 0x00, 0x00, 0x56, 0xB2}}
 
+#define FTS_STTW_E3_BUF_LEN                 13
+#define FTS_LPTW_E2_BUF_LEN                 13
+#define FTS_LPTW_E1_BUF_LEN                 12
+#define FTS_LPTW_BUF_LEN                    (max(FTS_LPTW_E1_BUF_LEN, FTS_LPTW_E2_BUF_LEN))
 
 #define FILE_NAME_LENGTH                    128
 #define ENABLE                              1
 #define DISABLE                             0
 #define VALID                               1
 #define INVALID                             0
+#define MAX_RETRY_CNT                       3
 #define FTS_CMD_START1                      0x55
 #define FTS_CMD_START2                      0xAA
 #define FTS_CMD_START_DELAY                 12
@@ -82,6 +87,7 @@
 #define FTS_CMD_READ_ID_LEN                 4
 #define FTS_CMD_READ_ID_LEN_INCELL          1
 #define FTS_CMD_READ_FW_CONF                0xA8
+#define FTS_CMD_READ_TOUCH_DATA             0x01
 /*register address*/
 #define FTS_REG_INT_CNT                     0x8F
 #define FTS_REG_FLOW_WORK_CNT               0x91
@@ -117,20 +123,17 @@
 #define FTS_REG_SENSE_ONOFF                 0xEA
 #define FTS_REG_IRQ_ONOFF                   0xEB
 
-#define FTS_heatmap_REG_1E                  0x1E
-#define FTS_heatmap_REG_ED                  0xED
-#define FTS_heatmap_REG_9E                  0x9E
+#define FTS_REG_HEATMAP_1E                  0x1E
+#define FTS_REG_HEATMAP_ED                  0xED
+#define FTS_REG_HEATMAP_9E                  0x9E
 
 #define FTS_LPTW_REG_SET_E1                 0xE1
 #define FTS_LPTW_REG_SET_E2                 0xE2
 #define FTS_STTW_REG_SET_E3                 0xE3
 #define FTS_GESTURE_MAJOR_MINOR             0xE5
+#define FTS_REG_CONTINUOUS_EN               0xE7
 
-#define FTS_STTW_E3_BUF_LEN                 13
-#define FTS_LPTW_E2_BUF_LEN                 11
-#define FTS_LPTW_E1_BUF_LEN                 12
-
-#define FTS_REG_CUSTOMER_STATUS             0xB2    // follow _FTS_CUSTOMER_STATUS.
+#define FTS_REG_CUSTOMER_STATUS             0xB2    // follow FTS_CUSTOMER_STATUS.
                                                     // bit 0~1 : HOPPING
                                                     // bit 2   : PALM
                                                     // bit 3   : WATER
@@ -138,8 +141,15 @@
                                                     // bit 5   : GLOVE
                                                     // bit 6   : STTW
                                                     // bit 7   : LPWG
+#define FTS_CAP_DATA_OFFSET                 91
+#define FTS_SELF_DATA_LEN                   68
+#define FTS_PRESSURE_SCALE                  85      // 255 / 3
+
 #define FTS_SYSFS_ECHO_ON(buf)      (buf[0] == '1')
 #define FTS_SYSFS_ECHO_OFF(buf)     (buf[0] == '0')
+
+#define FTS_DEFAULT_FW_GRIP                 FW_GRIP_DISABLE
+#define FTS_DEFAULT_FW_PALM                 FW_PALM_ENABLE
 
 #define kfree_safe(pbuf) do {\
     if (pbuf) {\
@@ -189,6 +199,9 @@ enum {
     FTS_TS_BUS_REF_SCREEN_ON    = 0x01,
     FTS_TS_BUS_REF_IRQ          = 0x02,
     FTS_TS_BUS_REF_FW_UPDATE    = 0x04,
+    FTS_TS_BUS_REF_SYSFS        = 0x0008,
+    FTS_TS_BUS_REF_FORCE_ACTIVE = 0x0010,
+    FTS_TS_BUS_REF_BUGREPORT    = 0x0020,
 };
 
 enum TOUCH_POWER_MODE {
@@ -196,6 +209,32 @@ enum TOUCH_POWER_MODE {
     FTS_TS_STATE_SUSPEND,
 };
 #endif
+
+/* Firmware Grip suppression mode.
+ * 0 - Disable fw grip suppression.
+ * 1 - Enable fw grip suppression.
+ * 2 - Force disable fw grip suppression.
+ * 3 - Force enable fw grip suppression.
+ */
+enum FW_GRIP_MODE {
+    FW_GRIP_DISABLE,
+    FW_GRIP_ENABLE,
+    FW_GRIP_FORCE_DISABLE,
+    FW_GRIP_FORCE_ENABLE,
+};
+
+/* Firmware Palm rejection mode.
+ * 0 - Disable fw palm rejection.
+ * 1 - Enable fw palm rejection.
+ * 2 - Force disable fw palm rejection.
+ * 3 - Force enable fw palm rejection.
+ */
+enum FW_PALM_MODE {
+    FW_PALM_DISABLE,
+    FW_PALM_ENABLE,
+    FW_PALM_FORCE_DISABLE,
+    FW_PALM_FORCE_ENABLE,
+};
 
 /*****************************************************************************
 * DEBUG function define here
@@ -225,4 +264,8 @@ enum TOUCH_POWER_MODE {
 #define FTS_ERROR(fmt, args...) do { \
     printk(KERN_ERR "[FTS_TS/E]%s:"fmt"\n", __func__, ##args); \
 } while (0)
+
+#define PR_LOGD(log, ...) \
+    pr_debug("[FTS_TS/D] %s: " log, __func__, ##__VA_ARGS__)
+
 #endif /* __LINUX_FOCALTECH_COMMON_H__ */

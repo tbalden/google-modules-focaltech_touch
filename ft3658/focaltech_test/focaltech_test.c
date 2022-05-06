@@ -262,6 +262,7 @@ int fts_test_write(u8 addr, u8 *writebuf, int writelen)
  *******************************************************************/
 int enter_work_mode(void)
 {
+    struct fts_ts_data *ts_data = fts_data;
     int ret = 0;
     u8 mode = 0;
     int i = 0;
@@ -279,8 +280,9 @@ int enter_work_mode(void)
             sys_delay(FACTORY_TEST_DELAY);
             for (j = 0; j < 20; j++) {
                 ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &mode);
-                if ((ret >= 0) && (0x00 == mode)) {
+                if ((ret >= 0) && (mode == FTS_REG_WORKMODE_WORK_VALUE)) {
                     FTS_TEST_INFO("enter work mode success");
+                    ts_data->work_mode = mode;
                     return 0;
                 } else {
                     sys_delay(FACTORY_TEST_DELAY);
@@ -302,6 +304,7 @@ int enter_work_mode(void)
 
 int enter_factory_mode(void)
 {
+    struct fts_ts_data *ts_data = fts_data;
     int ret = 0;
     u8 mode = 0;
     int i = 0;
@@ -317,9 +320,10 @@ int enter_factory_mode(void)
             sys_delay(FACTORY_TEST_DELAY);
             for (j = 0; j < 20; j++) {
                 ret = fts_test_read_reg(DIVIDE_MODE_ADDR, &mode);
-                if ((ret >= 0) && (0x40 == mode)) {
+                if ((ret >= 0) && (mode == FTS_REG_WORKMODE_FACTORY_VALUE)) {
                     FTS_TEST_INFO("enter factory mode success");
                     sys_delay(200);
+                    ts_data->work_mode = mode;
                     return 0;
                 } else {
                     sys_delay(FACTORY_TEST_DELAY);
@@ -2104,7 +2108,6 @@ static int fts_test_entry(char *ini_file_name)
 #endif
     }
 
-    ret = 0;
 test_err:
     fts_test_main_exit();
     enter_work_mode();
@@ -2317,23 +2320,28 @@ static const struct file_operations proc_run_os_test_fops = {
 static int proc_test_fwver_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     u8 fw_major_ver = 0;
     u8 fw_minor_ver = 0;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = fts_read_reg(REG_FW_MAJOR_VER, &fw_major_ver);
     if (ret < 0) {
         FTS_ERROR("FWVER read major version fail,ret=%d\n", ret);
-        return ret;
+        goto exit;
     }
 
     ret = fts_read_reg(REG_FW_MINOR_VER, &fw_minor_ver);
     if (ret < 0) {
         FTS_ERROR("FWVER read minor version fail,ret=%d\n", ret);
-        return ret;
+        goto exit;
     }
 
     seq_printf(s, "FWVER:V%02x_D%02x\n", fw_major_ver, fw_minor_ver);
-    return 0;
+
+exit:
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
+    return ret;
 }
 
 static int proc_test_fwver_open(struct inode *inode, struct file *file)
@@ -2362,34 +2370,36 @@ static const struct file_operations proc_test_fwver_fops = {
 static int proc_test_chnum_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     u8 tx = 0;
     u8 rx = 0;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_factory_mode();
     if (ret < 0) {
         FTS_ERROR("enter factory mode fails");
-        return ret;
+        goto exit;
     }
 
     ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
     if (ret < 0) {
         FTS_ERROR("read tx fails");
-        return ret;
+        goto exit;
     }
 
     ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
     if (ret < 0) {
         FTS_ERROR("read rx fails");
-        return ret;
-    }
-
-    ret = enter_work_mode();
-    if (ret < 0) {
-        FTS_ERROR("enter work mode fails");
+        goto exit;
     }
 
     seq_printf(s, "TX:%02d, RX:%02d\n", tx, rx);
-    return 0;
+
+exit:
+    enter_work_mode();
+
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
+    return ret;
 }
 
 static int proc_test_chnum_open(struct inode *inode, struct file *file)
@@ -2418,20 +2428,22 @@ static const struct file_operations proc_test_chnum_fops = {
 static int proc_test_hw_reset_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     u8 reg88_val = 0xFF;
     u8 tmp_val = 0;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = fts_read_reg(FTS_TMP_REG_88, &reg88_val);
     if (ret < 0) {
         FTS_ERROR("read reg88 fails");
-        return ret;
+        goto exit;
     }
 
     tmp_val = reg88_val - 1;
     ret = fts_write_reg(FTS_TMP_REG_88, tmp_val);
     if (ret < 0) {
         FTS_ERROR("write reg88 fails");
-        return ret;
+        goto exit;
     }
 
     fts_reset_proc(200);
@@ -2439,7 +2451,7 @@ static int proc_test_hw_reset_show(struct seq_file *s, void *v)
     ret = fts_read_reg(FTS_TMP_REG_88, &tmp_val);
     if (ret < 0) {
         FTS_ERROR("read reg88 fails");
-        return ret;
+        goto exit;
     }
 
     if (tmp_val == reg88_val)
@@ -2447,6 +2459,8 @@ static int proc_test_hw_reset_show(struct seq_file *s, void *v)
     else
         seq_printf(s, "Reset Pin test FAIL.\n");
 
+exit:
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
     return ret;
 }
 
@@ -2476,37 +2490,39 @@ static const struct file_operations proc_test_hw_reset_fops = {
 static int proc_test_sw_reset_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     u8 reg88_val = 0;
     u8 tmp_val = 0;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = fts_read_reg(FTS_TMP_REG_88, &reg88_val);
     if (ret < 0) {
         FTS_ERROR("read reg88 fails");
-        return ret;
+        goto exit;
     }
 
     ret = fts_write_reg(FTS_TMP_REG_88, 0x22);
     if (ret < 0) {
         FTS_ERROR("write reg88 fails for SW reset");
-        return ret;
+        goto exit;
     }
 
     ret = fts_write_reg(FTS_TMP_REG_SOFT_RESET, 0xAA);
     if (ret < 0) {
         FTS_ERROR("write 0xAA to reg 0xFC fails");
-        return ret;
+        goto exit;
     }
 
     ret = fts_write_reg(FTS_TMP_REG_SOFT_RESET, 0x66);
     if (ret < 0) {
         FTS_ERROR("write 0x66 to reg 0xFC fails");
-        return ret;
+        goto exit;
     }
     sys_delay(40);
     ret = fts_read_reg(FTS_TMP_REG_88, &tmp_val);
     if (ret < 0) {
         FTS_ERROR("read reg88 fails for SW reset");
-        return ret;
+        goto exit;
     }
 
     if (tmp_val == reg88_val)
@@ -2514,7 +2530,9 @@ static int proc_test_sw_reset_show(struct seq_file *s, void *v)
     else
         seq_printf(s, "SW Reset test FAIL.\n");
 
-    return 0;
+exit:
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
+    return ret;
 }
 
 static int proc_test_sw_reset_open(struct inode *inode, struct file *file)
@@ -2544,11 +2562,13 @@ int int_test_has_interrupt = 0;
 static int proc_test_int_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_factory_mode();
     if (ret < 0) {
         FTS_ERROR("enter factory mode fails");
-        return ret;
+        goto exit;
     }
 
     fts_irq_enable();
@@ -2557,8 +2577,7 @@ static int proc_test_int_show(struct seq_file *s, void *v)
     ret = fts_write_reg(FACTORY_REG_SCAN_ADDR2, 0x01);
     if (ret < 0) {
         FTS_ERROR("read tx fails");
-        enter_work_mode();
-        return ret;
+        goto exit;
     }
 
     sys_delay(1000);
@@ -2568,11 +2587,10 @@ static int proc_test_int_show(struct seq_file *s, void *v)
     else
         seq_printf(s, "INT Pin test FAIL.\n");
 
-    ret = enter_work_mode();
-    if (ret < 0) {
-        FTS_ERROR("enter work mode fails");
-    }
+exit:
+    enter_work_mode();
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
     return ret;
 }
 
@@ -2612,38 +2630,38 @@ extern int fts_test_get_panel_differ(int *panel_differ, u8 tx, u8 rx);
 static int proc_test_raw_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     int i = 0;
     int node_num = 0;
     u8 tx = 0;
     u8 rx = 0;
-    int *raw;
+    int *raw = NULL;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_factory_mode();
     if (ret < 0) {
         FTS_ERROR("enter factory mode fails");
-        return ret;
+        goto exit;
     }
     /* get Tx chanel number */
     ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
     if (ret < 0) {
         FTS_ERROR("read tx fails");
-        enter_work_mode();
-        return ret;
+        goto exit;
     }
     /* get Rx chanel number */
     ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
     if (ret < 0) {
         FTS_ERROR("read rx fails");
-        enter_work_mode();
-        return ret;
+        goto exit;
     }
 
     node_num = tx * rx;
     raw = fts_malloc(node_num * sizeof(int));
     if (!raw) {
         FTS_ERROR("malloc memory for raw fails");
-        enter_work_mode();
-        return  -ENOMEM;
+        ret = -ENOMEM;
+        goto exit;
     }
 
     /* get raw data */
@@ -2663,10 +2681,13 @@ static int proc_test_raw_show(struct seq_file *s, void *v)
 
     seq_printf(s, "\n\n");
 
-    fts_free(raw);
+exit:
+    if (raw)
+        fts_free(raw);
 
-    ret = enter_work_mode();
+    enter_work_mode();
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
     return ret;
 }
 
@@ -2696,29 +2717,31 @@ static const struct file_operations proc_test_raw_fops = {
 static int proc_test_baseline_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     int i = 0;
     int node_num = 0;
     u8 tx = 0;
     u8 rx = 0;
-    int *raw;
-    int *base_raw;
+    int *raw = NULL;
+    int *base_raw = NULL;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_factory_mode();
     if (ret < 0) {
         FTS_ERROR("enter factory mode fails");
-        return ret;
+        goto exit;
     }
 
     ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
     if (ret < 0) {
         FTS_ERROR("read tx fails");
-        goto work_raw;
+        goto exit;
     }
 
     ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
     if (ret < 0) {
         FTS_ERROR("read rx fails");
-        goto work_raw;
+        goto exit;
     }
 
     node_num = tx * rx;
@@ -2726,14 +2749,14 @@ static int proc_test_baseline_show(struct seq_file *s, void *v)
     if (!raw) {
         FTS_ERROR("malloc memory for raw fails");
         ret = -ENOMEM;
-        goto work_raw;
+        goto exit;
     }
 
     base_raw = fts_malloc(node_num * sizeof(int));
     if (!base_raw) {
         FTS_ERROR("malloc memory for base_raw fails");
         ret = -ENOMEM;
-        goto work_raw;
+        goto exit;
     }
 
     /* get baseline data */
@@ -2752,16 +2775,17 @@ static int proc_test_baseline_show(struct seq_file *s, void *v)
     }
 
     seq_printf(s, "\n\n");
-    fts_free(base_raw);
-    fts_free(raw);
 
-work_raw:
+exit:
+    if (base_raw)
+        fts_free(base_raw);
 
-    ret = enter_work_mode();
-    if (ret < 0) {
-        FTS_ERROR("enter work mode fails");
-    }
+    if (raw)
+        fts_free(raw);
 
+    enter_work_mode();
+
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
     return 0;
 }
 
@@ -2789,7 +2813,7 @@ static const struct file_operations proc_test_baseline_fops = {
 
 /* Strength test for full size */
 /* transpose raw */
-static void transpose_raw(u8 *src, u8 *dist, int tx, int rx) {
+void transpose_raw(u8 *src, u8 *dist, int tx, int rx) {
     int i = 0;
     int j = 0;
 
@@ -2804,6 +2828,7 @@ static void transpose_raw(u8 *src, u8 *dist, int tx, int rx) {
 static int proc_test_strength_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     int i = 0;
     int node_num = 0;
     int self_node = 0;
@@ -2815,43 +2840,45 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     u8 rx = 34;
     short base_result = 0;
 
-    u8 *base_raw;
-    u8 *trans_raw;
+    u8 *base_raw = NULL;
+    u8 *trans_raw = NULL;
+    int base_raw_len = 0;
     int base = 0;
     int Fast_events_x = 0;
     int Fast_events_y = 0;
     u8 Fast_events_id = 0;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_work_mode();
     if (ret < 0) {
-        FTS_ERROR("enter work mode fails");
         goto exit;
     }
 
     node_num = tx * rx;
     self_node = tx + rx;
-    self_cap_num = self_cap_offset + node_num * 2;
-    self_cap_num_off = self_cap_num + self_cap_len * 2;
-
-    base_raw = fts_malloc(self_cap_num * sizeof(int));
+    self_cap_num = self_cap_offset + node_num * sizeof(u16);
+    self_cap_num_off = self_cap_num + self_cap_len * sizeof(u16);
+    base_raw_len = self_cap_num + self_cap_len * 2 * sizeof(u16);
+    FTS_DEBUG("heapmap base_raw length = %d", base_raw_len);
+    base_raw = fts_malloc(base_raw_len);
     if (!base_raw) {
         FTS_ERROR("malloc memory for raw fails");
         ret = -ENOMEM;
         goto exit;
     }
 
-    trans_raw = fts_malloc(node_num * 2 * sizeof(int));
+    trans_raw = fts_malloc(node_num * sizeof(u16));
     if (!trans_raw) {
         FTS_ERROR("malloc memory for transpose raw fails");
         ret = -ENOMEM;
-        goto base_raw_err;
+        goto exit;
     }
 
     /* get strength data. */
     ret = fts_test_get_strength(base_raw, tx, rx);
     if (ret < 0) {
         FTS_ERROR("get strength fails");
-        goto trans_raw_err;
+        goto exit;
     }
 
     /*---------Output touch point-----------*/
@@ -2862,13 +2889,14 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
                           (base_raw[3 + base] & 0xFF);
          Fast_events_y = ((base_raw[4 + base] & 0x0F) << 8) +
                           (base_raw[5 + base] & 0xFF);
-         Fast_events_id = (base_raw[4 + base]& 0xF0) >> 4;
+         Fast_events_id = (base_raw[4 + base] & 0xF0) >> 4;
          seq_printf(s, "Finger ID= %d , X= %d, y=%d\n", Fast_events_id,
-                    Fast_events_x,Fast_events_y);
+                    Fast_events_x, Fast_events_y);
     }
 
     seq_printf(s, "     ");
     /* transpose data buffer. */
+    FTS_DEBUG("index(mutual) = %d", self_cap_offset);
     transpose_raw(base_raw + self_cap_offset, trans_raw, tx, rx);
     for (i = 0; i < tx; i++)
         seq_printf(s, " TX%02d ", (i + 1));
@@ -2886,6 +2914,7 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     /*---------output self of strength data-----------*/
     seq_printf(s, "\n");
     seq_printf(s, "Scap raw(proof on):\n");
+    FTS_DEBUG("index(rx) = %d", self_cap_num);
     for (i = 0; i < self_node; i++) {
         base_result = (int)(base_raw[(i * 2) + self_cap_num] << 8) +
                       (int)base_raw[(i * 2) + self_cap_num + 1];
@@ -2893,7 +2922,8 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
         if (i == 0)
             seq_printf(s, "RX:");
 
-        if(i == rx) {
+        if (i == rx) {
+            FTS_DEBUG("index(tx) = %d", (self_cap_num + (i * 2)));
             seq_printf(s, "\n");
             seq_printf(s, "TX:");
         }
@@ -2909,7 +2939,7 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
         if (i == 0)
             seq_printf(s, "RX:");
 
-        if(i == rx){
+        if (i == rx){
             seq_printf(s, "\n");
             seq_printf(s, "TX:");
         }
@@ -2919,11 +2949,14 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     seq_printf(s, "\n\n");
     /*---------END self of strength data-----------*/
 
-trans_raw_err:
-    fts_free(trans_raw);
-base_raw_err:
-    fts_free(base_raw);
 exit:
+    if (trans_raw)
+        fts_free(trans_raw);
+
+    if (base_raw)
+        fts_free(base_raw);
+
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
     return ret;
 }
 
@@ -2953,16 +2986,18 @@ static const struct file_operations proc_test_strength_fops = {
 static int proc_test_uniformity_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     int i = 0;
     int node_num = 0;
     u8 tx = 0;
     u8 rx = 0;
-    int *uniformity;
+    int *uniformity = NULL;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_factory_mode();
     if (ret < 0) {
         FTS_ERROR("enter factory mode fails");
-        return ret;
+        goto exit;
     }
 
     ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
@@ -3005,15 +3040,13 @@ static int proc_test_uniformity_show(struct seq_file *s, void *v)
             seq_printf(s, "%d,\n", uniformity[node_num + i]);
     }
 
-    fts_free(uniformity);
-
 exit:
+    if (uniformity)
+        fts_free(uniformity);
 
-    ret = enter_work_mode();
-    if (ret < 0) {
-        FTS_ERROR("enter work mode fails");
-    }
+    enter_work_mode();
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
     return 0;
 }
 
@@ -3043,6 +3076,7 @@ static const struct file_operations proc_test_uniformity_fops = {
 static int proc_test_sraw_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     int i = 0;
     int node_num = 0;
     int *sraw = NULL;
@@ -3050,10 +3084,11 @@ static int proc_test_sraw_show(struct seq_file *s, void *v)
     u8 tx = 0;
     u8 rx = 0;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_factory_mode();
     if (ret < 0) {
         FTS_ERROR("enter factory mode fails");
-        return ret;
+        goto exit;
     }
 
     ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
@@ -3126,16 +3161,14 @@ static int proc_test_sraw_show(struct seq_file *s, void *v)
         seq_printf(s, "\n");
     }
 
-    fts_free(sraw);
-
 exit:
+    if (sraw)
+        fts_free(sraw);
 
-    ret = enter_work_mode();
-    if (ret < 0) {
-        FTS_ERROR("enter work mode fails");
-    }
+    enter_work_mode();
 
-    return 0;
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
+    return ret;
 }
 
 static int proc_test_sraw_open(struct inode *inode, struct file *file)
@@ -3164,6 +3197,7 @@ static const struct file_operations proc_test_sraw_fops = {
 static int proc_test_scb_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     int i = 0;
     int node_num = 0;
     int *scb = NULL;
@@ -3171,10 +3205,11 @@ static int proc_test_scb_show(struct seq_file *s, void *v)
     u8 tx = 0;
     u8 rx = 0;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_factory_mode();
     if (ret < 0) {
         FTS_ERROR("enter factory mode fails");
-        return ret;
+        goto exit;
     }
 
     ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
@@ -3248,16 +3283,14 @@ static int proc_test_scb_show(struct seq_file *s, void *v)
         seq_printf(s, "\n");
     }
 
-    fts_free(scb);
-
 exit:
+    if (scb)
+        fts_free(scb);
 
-    ret = enter_work_mode();
-    if (ret < 0) {
-        FTS_ERROR("enter work mode fails");
-    }
+    enter_work_mode();
 
-    return 0;
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
+    return ret;
 }
 
 static int proc_test_scb_open(struct inode *inode, struct file *file)
@@ -3286,16 +3319,18 @@ static const struct file_operations proc_test_scb_fops = {
 static int proc_test_noise_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     int i = 0;
     int node_num = 0;
     u8 tx = 0;
     u8 rx = 0;
-    int *noise;
+    int *noise = NULL;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_factory_mode();
     if (ret < 0) {
         FTS_ERROR("enter factory mode fails");
-        return ret;
+        goto exit;
     }
 
     ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
@@ -3335,16 +3370,14 @@ static int proc_test_noise_show(struct seq_file *s, void *v)
 
     seq_printf(s, "\n\n");
 
-    fts_free(noise);
-
 exit:
+    if (noise)
+        fts_free(noise);
 
-    ret = enter_work_mode();
-    if (ret < 0) {
-        FTS_ERROR("enter work mode fails");
-    }
+    enter_work_mode();
 
-    return 0;
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
+    return ret;
 }
 
 static int proc_test_noise_open(struct inode *inode, struct file *file)
@@ -3373,38 +3406,38 @@ static const struct file_operations proc_test_noise_fops = {
 static int proc_test_short_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     int i = 0;
     int node_num = 0;
     u8 tx = 0;
     u8 rx = 0;
-    int *short_data;
+    int *short_data = NULL;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_factory_mode();
     if (ret < 0) {
         FTS_ERROR("enter factory mode fails");
-        return ret;
+        goto exit;
     }
     /* get Tx chanel number */
     ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
     if (ret < 0) {
         FTS_ERROR("read tx fails");
-        enter_work_mode();
-        return ret;
+        goto exit;
     }
     /* get Rx chanel number */
     ret = fts_read_reg(FACTORY_REG_CHY_NUM, &rx);
     if (ret < 0) {
         FTS_ERROR("read rx fails");
-        enter_work_mode();
-        return ret;
+        goto exit;
     }
 
     node_num = tx + rx;
     short_data = fts_malloc(node_num * sizeof(int));
     if (!short_data) {
         FTS_ERROR("malloc memory for raw fails");
-        enter_work_mode();
-        return -ENOMEM;
+        ret = -ENOMEM;
+        goto exit;
     }
 
     /* get raw data */
@@ -3423,10 +3456,13 @@ static int proc_test_short_show(struct seq_file *s, void *v)
     }
     seq_printf(s, "\n\n");
 
-    fts_free(short_data);
+exit:
+    if (short_data)
+        fts_free(short_data);
 
-    ret = enter_work_mode();
+    enter_work_mode();
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
     return ret;
 }
 
@@ -3455,16 +3491,18 @@ static const struct file_operations proc_test_short_fops = {
 static int proc_test_panel_differ_show(struct seq_file *s, void *v)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     int i = 0;
     int node_num = 0;
     u8 tx = 0;
     u8 rx = 0;
-    int *panel_differ;
+    int *panel_differ = NULL;
 
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_factory_mode();
     if (ret < 0) {
         FTS_ERROR("enter factory mode fails");
-        return ret;
+        goto exit;
     }
 
     ret = fts_read_reg(FACTORY_REG_CHX_NUM, &tx);
@@ -3504,16 +3542,14 @@ static int proc_test_panel_differ_show(struct seq_file *s, void *v)
 
     seq_printf(s, "\n\n");
 
-    fts_free(panel_differ);
-
 exit:
+    if (panel_differ)
+        fts_free(panel_differ);
 
-    ret = enter_work_mode();
-    if (ret < 0) {
-        FTS_ERROR("enter work mode fails");
-    }
+    enter_work_mode();
 
-    return 0;
+    fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, false);
+    return ret;
 }
 
 static int proc_test_panel_differ_open(struct inode *inode, struct file *file)
@@ -3764,6 +3800,8 @@ int fts_test_exit(struct fts_ts_data *ts_data)
     FTS_TEST_FUNC_ENTER();
 
     fts_free_test_procs();
+    if (fts_proc_test_dir)
+        proc_remove(fts_proc_test_dir);
     sysfs_remove_group(&ts_data->dev->kobj, &fts_test_attribute_group);
     fts_free(fts_ftest);
     FTS_TEST_FUNC_EXIT();

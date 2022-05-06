@@ -2040,30 +2040,26 @@ test_err:
 int fts_test_get_strength(u8 *base_raw, u8 tx, u8 rx)
 {
     int ret = 0;
+    struct fts_ts_data *ts_data = fts_data;
     int self_cap_offset = 91;
     int self_cap_len = 68;
-    int self_data_len = self_cap_len * 2 * 2;
-    int fast_num_len = self_cap_offset + 2 * (tx * rx) + self_data_len;
+    int self_data_len = self_cap_len * 2; /* cap and cap_off */
+    int fast_num_len = self_cap_offset +
+                       ((tx * rx) + self_data_len) * sizeof(u16);
     u8 id_cmd[4] = {0};
 
     FTS_TEST_INFO("====== Test Item: strength test start\n");
     id_cmd[0] = 0x01;
 
-    fts_test_write_reg(FTS_heatmap_REG_1E, 0x01);
-    fts_test_write_reg(FTS_heatmap_REG_ED, 0x00);
-    fts_test_write_reg(FTS_heatmap_REG_9E, 0x01);
+    fts_set_heatmap_mode(ts_data, true);
     sys_delay(500);
-
+    FTS_TEST_DBG("Allocate heatmap length = %d.\n", fast_num_len);
     ret = fts_read(id_cmd, 1, base_raw, fast_num_len);
 
     if (ret < 0) {
         FTS_TEST_ERROR("get strength fail,ret=%d\n", ret);
         goto test_err;
     }
-
-    fts_test_write_reg(FTS_heatmap_REG_9E, 0x00);
-    sys_delay(10);
-    fts_test_write_reg(FTS_heatmap_REG_1E, 0x00);
 
 test_err:
     FTS_TEST_INFO("====== Test Item: strength test end\n");
