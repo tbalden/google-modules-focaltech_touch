@@ -2955,6 +2955,8 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
 {
     FTS_FUNC_ENTER();
 
+    free_irq(ts_data->irq, ts_data);
+
 #if FTS_POINT_REPORT_CHECK_EN
     fts_point_report_check_exit(ts_data);
 #endif
@@ -2976,7 +2978,6 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
     fts_gesture_exit(ts_data);
     fts_bus_exit(ts_data);
 
-    free_irq(ts_data->irq, ts_data);
     input_unregister_device(ts_data->input_dev);
 #if FTS_PEN_EN
     input_unregister_device(ts_data->pen_dev);
