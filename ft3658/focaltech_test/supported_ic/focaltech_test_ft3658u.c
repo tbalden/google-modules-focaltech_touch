@@ -2050,18 +2050,18 @@ int fts_test_get_strength(u8 *base_raw, u8 tx, u8 rx)
 
     FTS_TEST_INFO("====== Test Item: strength test start\n");
     id_cmd[0] = 0x01;
-
-    fts_set_heatmap_mode(ts_data, true);
+    /* Enable uncompressed heatmap. */
+    fts_set_heatmap_mode(ts_data, FW_HEATMAP_MODE_UNCOMPRESSED);
     sys_delay(500);
     FTS_TEST_DBG("Allocate heatmap length = %d.\n", fast_num_len);
     ret = fts_read(id_cmd, 1, base_raw, fast_num_len);
 
     if (ret < 0) {
         FTS_TEST_ERROR("get strength fail,ret=%d\n", ret);
-        goto test_err;
     }
 
-test_err:
+    /* Enable compressed heatmap. */
+    fts_set_heatmap_mode(ts_data, FW_HEATMAP_MODE_COMPRESSED);
     FTS_TEST_INFO("====== Test Item: strength test end\n");
     return ret;
 }

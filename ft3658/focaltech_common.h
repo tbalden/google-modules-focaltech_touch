@@ -75,6 +75,7 @@
 #define FTS_LPTW_BUF_LEN                    (max(FTS_LPTW_E1_BUF_LEN, FTS_LPTW_E2_BUF_LEN))
 
 #define FILE_NAME_LENGTH                    128
+#define FTS_MESSAGE_LENGTH                  128
 #define ENABLE                              1
 #define DISABLE                             0
 #define VALID                               1
@@ -141,10 +142,10 @@
                                                     // bit 5   : GLOVE
                                                     // bit 6   : STTW
                                                     // bit 7   : LPWG
-#define FTS_CAP_DATA_OFFSET                 91
+#define FTS_CAP_DATA_LEN                    91
 #define FTS_SELF_DATA_LEN                   68
 #define FTS_PRESSURE_SCALE                  85      // 255 / 3
-#define FTS_CUSTOMER_STATUS_LEN             2
+#define FTS_CUSTOMER_STATUS_LEN             4
 #define FTS_CUSTOMER_STATUS1_MASK           0x0F
 
 #define FTS_SYSFS_ECHO_ON(buf)      (buf[0] == '1')
@@ -220,6 +221,17 @@ enum FW_GRIP_MODE {
     FW_GRIP_ENABLE,
     FW_GRIP_FORCE_DISABLE,
     FW_GRIP_FORCE_ENABLE,
+};
+
+/* Firmware Heatmap mode.
+ * 0 - Disable fw heatmap.
+ * 1 - Enable fw compressed heatmap.
+ * 2 - Enable fw uncompressed heatmap.
+ */
+enum FW_HEATMAP_MODE {
+    FW_HEATMAP_MODE_DISABLE,
+    FW_HEATMAP_MODE_COMPRESSED,
+    FW_HEATMAP_MODE_UNCOMPRESSED,
 };
 
 /* Firmware Palm rejection mode.

@@ -2812,15 +2812,22 @@ static const struct file_operations proc_test_baseline_fops = {
 #endif
 
 /* Strength test for full size */
-/* transpose raw */
-void transpose_raw(u8 *src, u8 *dist, int tx, int rx) {
+/* Transpose raw */
+void transpose_raw(u8 *src, u8 *dist, int tx, int rx, bool big_endian) {
     int i = 0;
     int j = 0;
 
     for (i = 0; i < tx; i++) {
         for (j = 0; j < rx; j++) {
-            dist[(j * tx + i) * 2] = src[(i * rx + j) * 2];
-            dist[(j * tx + i) * 2 + 1] = src[(i * rx + j) * 2 + 1];
+            if (big_endian) {
+                /* keep big_endian. */
+                dist[(j * tx + i) * 2] = src[(i * rx + j) * 2];
+                dist[(j * tx + i) * 2 + 1] = src[(i * rx + j) * 2 + 1];
+           } else {
+                /* transfer to big_endian. */
+                dist[(j * tx + i) * 2] = src[(i * rx + j) * 2 + 1];
+                dist[(j * tx + i) * 2 + 1] = src[(i * rx + j) * 2];
+           }
         }
     }
 }
@@ -2832,21 +2839,25 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     int i = 0;
     int node_num = 0;
     int self_node = 0;
-    int self_cap_num = 0;
-    int self_cap_num_off = 0;
-    int self_cap_offset = 91;
-    int self_cap_len = 68;
-    u8 tx = 16;
-    u8 rx = 34;
+    u8 tx = ts_data->pdata->tx_ch_num;
+    u8 rx = ts_data->pdata->rx_ch_num;
+    /* The format of uncompressed heatmap from touch chip.
+     *
+     * |- cap header (91) -|- Water-SS -|- Normal-SS -|- Normal-MS -|
+     * |-        91       -|-   68*2   -|-   68*2    -|-  16*34*2  -|
+     */
+    int ss_cap_on_idx = FTS_CAP_DATA_LEN;
+    int ss_cap_off_idx = ss_cap_on_idx + FTS_SELF_DATA_LEN * sizeof(u16);
+    int ms_cap_idx = ss_cap_off_idx + FTS_SELF_DATA_LEN * sizeof(u16);
     short base_result = 0;
 
     u8 *base_raw = NULL;
     u8 *trans_raw = NULL;
     int base_raw_len = 0;
     int base = 0;
-    int Fast_events_x = 0;
-    int Fast_events_y = 0;
-    u8 Fast_events_id = 0;
+    int fast_events_x = 0;
+    int fast_events_y = 0;
+    u8 fast_events_id = 0;
 
     fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_work_mode();
@@ -2856,9 +2867,9 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
 
     node_num = tx * rx;
     self_node = tx + rx;
-    self_cap_num = self_cap_offset + node_num * sizeof(u16);
-    self_cap_num_off = self_cap_num + self_cap_len * sizeof(u16);
-    base_raw_len = self_cap_num + self_cap_len * 2 * sizeof(u16);
+
+    base_raw_len =
+        FTS_CAP_DATA_LEN + (FTS_SELF_DATA_LEN * 2 + node_num) * sizeof(u16);
     FTS_DEBUG("heapmap base_raw length = %d", base_raw_len);
     base_raw = fts_malloc(base_raw_len);
     if (!base_raw) {
@@ -2885,19 +2896,19 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     for (i = 0; i < base_raw[1]; i++) {
          base = FTS_ONE_TCH_LEN * i;
 
-         Fast_events_x = ((base_raw[2 + base] & 0x0F) << 8) +
+         fast_events_x = ((base_raw[2 + base] & 0x0F) << 8) +
                           (base_raw[3 + base] & 0xFF);
-         Fast_events_y = ((base_raw[4 + base] & 0x0F) << 8) +
+         fast_events_y = ((base_raw[4 + base] & 0x0F) << 8) +
                           (base_raw[5 + base] & 0xFF);
-         Fast_events_id = (base_raw[4 + base] & 0xF0) >> 4;
-         seq_printf(s, "Finger ID= %d , X= %d, y=%d\n", Fast_events_id,
-                    Fast_events_x, Fast_events_y);
+         fast_events_id = (base_raw[4 + base] & 0xF0) >> 4;
+         seq_printf(s, "Finger ID = %d , x = %d, y = %d\n", fast_events_id,
+                    fast_events_x, fast_events_y);
     }
 
     seq_printf(s, "     ");
     /* transpose data buffer. */
-    FTS_DEBUG("index(mutual) = %d", self_cap_offset);
-    transpose_raw(base_raw + self_cap_offset, trans_raw, tx, rx);
+    FTS_DEBUG("index of MS = %d", ms_cap_idx);
+    transpose_raw(base_raw + ms_cap_idx, trans_raw, tx, rx, true);
     for (i = 0; i < tx; i++)
         seq_printf(s, " TX%02d ", (i + 1));
 
@@ -2914,16 +2925,16 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     /*---------output self of strength data-----------*/
     seq_printf(s, "\n");
     seq_printf(s, "Scap raw(proof on):\n");
-    FTS_DEBUG("index(rx) = %d", self_cap_num);
+    FTS_DEBUG("index of SS_ON = %d", ss_cap_on_idx);
     for (i = 0; i < self_node; i++) {
-        base_result = (int)(base_raw[(i * 2) + self_cap_num] << 8) +
-                      (int)base_raw[(i * 2) + self_cap_num + 1];
+        base_result = (int)(base_raw[(i * 2) + ss_cap_on_idx] << 8) +
+                      (int)base_raw[(i * 2) + ss_cap_on_idx + 1];
 
         if (i == 0)
             seq_printf(s, "RX:");
 
         if (i == rx) {
-            FTS_DEBUG("index(tx) = %d", (self_cap_num + (i * 2)));
+            FTS_DEBUG("index(tx) = %d", (ss_cap_on_idx + (i * 2)));
             seq_printf(s, "\n");
             seq_printf(s, "TX:");
         }
@@ -2931,10 +2942,10 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     }
     seq_printf(s, "\n\n");
     seq_printf(s, "Scap raw(proof off):\n");
-
+    FTS_DEBUG("index of SS_OFF = %d", ss_cap_off_idx);
     for (i = 0; i < self_node; i++) {
-        base_result = (int)(base_raw[(i * 2) + self_cap_num_off] << 8) +
-                      (int)base_raw[(i * 2) + self_cap_num_off + 1];
+        base_result = (int)(base_raw[(i * 2) + ss_cap_off_idx] << 8) +
+                      (int)base_raw[(i * 2) + ss_cap_off_idx + 1];
 
         if (i == 0)
             seq_printf(s, "RX:");

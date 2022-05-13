@@ -278,7 +278,8 @@ struct fts_ts_data {
     u8 work_mode;
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    bool enable_fw_heatmap;
+    u8 fw_heatmap_mode;
+    int compress_heatmap_wlen;
 #endif
     u8 enable_fw_grip;
     u8 enable_fw_palm;
@@ -289,8 +290,12 @@ struct fts_ts_data {
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     u8 *heatmap_raw;
+    u16 heatmap_raw_size;
     u8 *trans_raw;
+    u16 trans_raw_size;
     u16 *heatmap_buff;
+    u16 heatmap_buff_size;
+    u8 self_sensing_type;
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
     struct touch_offload_context offload;
@@ -389,7 +394,7 @@ int fts_gesture_suspend(struct fts_ts_data *ts_data);
 int fts_gesture_resume(struct fts_ts_data *ts_data);
 
 /* Heatmap */
-int fts_set_heatmap_mode(struct fts_ts_data *ts_data, bool en);
+int fts_set_heatmap_mode(struct fts_ts_data *ts_data, u8 heatmap_mode);
 int fts_set_grip_mode(struct fts_ts_data *ts_datam, u8 grip_mode);
 int fts_set_palm_mode(struct fts_ts_data *ts_data, u8 palm_mode);
 int fts_set_continuous_mode(struct fts_ts_data *ts_data, bool en);
