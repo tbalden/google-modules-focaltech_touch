@@ -319,6 +319,7 @@ struct fts_ts_data {
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
     u32 tbn_register_mask;
+    u8  tbn_owner;
 #endif
 };
 

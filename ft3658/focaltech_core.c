@@ -2349,8 +2349,11 @@ static void fts_suspend_work(struct work_struct *work)
     ts_data->power_status = FTS_TS_STATE_SUSPEND;
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-    if (ts_data->tbn_register_mask)
-        tbn_release_bus(ts_data->tbn_register_mask);
+    if (ts_data->tbn_register_mask) {
+        int ret = tbn_release_bus(ts_data->tbn_register_mask);
+        if (ret == 0)
+            ts_data->tbn_owner = TBN_AOC;
+    }
 #endif
     mutex_unlock(&ts_data->device_mutex);
 }
@@ -2364,8 +2367,11 @@ static void fts_resume_work(struct work_struct *work)
     mutex_lock(&ts_data->device_mutex);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
-    if (ts_data->tbn_register_mask)
-        tbn_request_bus(ts_data->tbn_register_mask);
+    if (ts_data->tbn_register_mask) {
+        int ret = tbn_request_bus(ts_data->tbn_register_mask);
+        if (ret == 0)
+            ts_data->tbn_owner = TBN_AP;
+    }
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
     if (ts_data->power_status == FTS_TS_STATE_POWER_ON) {
@@ -2627,6 +2633,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         FTS_ERROR("Failed to register tbn context.\n");
         goto err_init_tbn;
     }
+    ts_data->tbn_owner = TBN_AP;
     FTS_INFO("tbn_register_mask = %#x.\n", ts_data->tbn_register_mask);
 #endif
 
