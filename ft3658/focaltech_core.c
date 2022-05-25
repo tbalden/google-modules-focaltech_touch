@@ -568,11 +568,11 @@ static int fts_input_report_b(struct fts_ts_data *data)
             input_report_abs(data->input_dev, ABS_MT_POSITION_X, events[i].x);
             input_report_abs(data->input_dev, ABS_MT_POSITION_Y, events[i].y);
 
-            touchs |= BIT(events[i].id);
-            data->touchs |= BIT(events[i].id);
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
             }
 #endif
+            touchs |= BIT(events[i].id);
+            data->touchs |= BIT(events[i].id);
             if ((data->log_level >= 2) ||
                 ((1 == data->log_level) && (FTS_TOUCH_DOWN == events[i].flag))) {
                 FTS_DEBUG("[B]P%d(%d, %d)[ma:%d,mi:%d,p:%d] DOWN!",
@@ -590,18 +590,16 @@ static int fts_input_report_b(struct fts_ts_data *data)
 #endif
                 input_mt_slot(data->input_dev, events[i].id);
                 input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, false);
-                data->touchs &= ~BIT(events[i].id);
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
             }
 #endif
+            data->touchs &= ~BIT(events[i].id);
             if (data->log_level >= 1) {
                 FTS_DEBUG("[B1]P%d UP!", events[i].id);
             }
         }
     }
-#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
-    if (!data->offload.offload_running) {
-#endif
+
     if (unlikely(data->touchs ^ touchs)) {
         for (i = 0; i < max_touch_num; i++)  {
             if (BIT(i) & (data->touchs ^ touchs)) {
@@ -609,13 +607,23 @@ static int fts_input_report_b(struct fts_ts_data *data)
                     FTS_DEBUG("[B2]P%d UP!", i);
                 }
                 va_reported = true;
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+                data->offload.coords[i].status = COORD_STATUS_INACTIVE;
+                if (!data->offload.offload_running) {
+#endif
                 input_mt_slot(data->input_dev, i);
                 input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, false);
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+                }
+#endif
             }
         }
     }
     data->touchs = touchs;
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+    if (!data->offload.offload_running) {
+#endif
     if (va_reported) {
         /* touchs==0, there's no point but key */
         if (EVENT_NO_DOWN(data) || (!touchs)) {
