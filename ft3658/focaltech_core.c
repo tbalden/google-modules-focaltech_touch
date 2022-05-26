@@ -798,12 +798,18 @@ static int fts_read_touchdata(struct fts_ts_data *data)
     int i;
 
     if (data->work_mode == FTS_REG_WORKMODE_WORK_VALUE) {
-        cmd[0] = FTS_REG_CUSTOMER_STATUS;
-        fts_read(cmd,1, regB2_data, FTS_CUSTOMER_STATUS_LEN);
+        /* If fw_heatmap_mode is enableed compressed heatmap, to read register
+         * 0xB2 before fts_get_heatamp() to get the length of compressed
+         * heatmap first.
+         */
+        if (data->fw_heatmap_mode == FW_HEATMAP_MODE_COMPRESSED) {
+            cmd[0] = FTS_REG_CUSTOMER_STATUS;
+            fts_read(cmd, 1, regB2_data, FTS_CUSTOMER_STATUS_LEN);
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-        data->compress_heatmap_wlen = (regB2_data[2] << 8) + regB2_data[3];
+            data->compress_heatmap_wlen = (regB2_data[2] << 8) + regB2_data[3];
 #endif
+        }
     }
 #endif
 
@@ -832,6 +838,14 @@ static int fts_read_touchdata(struct fts_ts_data *data)
 
 #if IS_ENABLED(GOOGLE_REPORT_MODE)
     if (data->work_mode == FTS_REG_WORKMODE_WORK_VALUE) {
+        /* If fw_heatmap_mode is disabled heatmap or enableed uncompressed
+         * heatmap, to read register 0xB2 after fts_get_heatamp().
+         */
+        if (data->fw_heatmap_mode != FW_HEATMAP_MODE_COMPRESSED) {
+            cmd[0] = FTS_REG_CUSTOMER_STATUS;
+            fts_read(cmd, 1, regB2_data, FTS_CUSTOMER_STATUS_LEN);
+        }
+
         check_regB2_status[0] = regB2_data[0] ^ data->current_host_status[0] ;
         if (check_regB2_status[0]) { // current_status is different with previous_status
             for(i = STATUS_HOPPING; i < STATUS_CNT_END; i++) {
@@ -2740,6 +2754,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     int pdata_size = sizeof(struct fts_ts_platform_data);
 
     FTS_FUNC_ENTER();
+    ts_data->driver_probed = false;
     FTS_INFO("%s", FTS_DRIVER_VERSION);
     ts_data->pdata = kzalloc(pdata_size, GFP_KERNEL);
     if (!ts_data->pdata) {
@@ -2849,7 +2864,10 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     memset(ts_data->current_host_status, 0, FTS_CUSTOMER_STATUS_LEN);
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    ts_data->fw_heatmap_mode = FW_HEATMAP_MODE_COMPRESSED;
+    ts_data->fw_default_heatmap_mode = FW_HEATMAP_MODE_UNCOMPRESSED;
+    /* Update ts_data->fw_default_heatmap_mode from firmware setting */
+    fts_get_default_heatmap_mode(ts_data);
+    ts_data->fw_heatmap_mode = ts_data->fw_default_heatmap_mode;
     ts_data->compress_heatmap_wlen = 0;
 #endif
     ts_data->enable_fw_grip = FW_GRIP_ENABLE;
@@ -3078,6 +3096,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         (ts_data->current_host_status[0] & (1 << STATUS_LPTW)) ? "enter" : "exit");
 #endif
 
+    ts_data->driver_probed = true;
     FTS_FUNC_EXIT();
     return 0;
 
@@ -3272,6 +3291,44 @@ static void fts_update_host_feature_setting(struct fts_ts_data *ts_data,
         ts_data->current_host_status[1] &= ~(1 << fw_mode_setting);
 }
 
+int fts_get_default_heatmap_mode(struct fts_ts_data *ts_data)
+{
+    int ret = 0;
+    u8 value_heatmap = 0;
+    u8 value_compressed = 0;
+    u8 reg_heatmap = FTS_REG_HEATMAP_9E;
+    u8 reg_compressed = FTS_REG_HEATMAP_ED;
+
+    if (!ts_data->driver_probed || ts_data->fw_loading) {
+        ret = fts_read_reg(reg_compressed, &value_compressed);
+        if (ret) {
+            FTS_ERROR("Read reg(%2X) error!", reg_compressed);
+            goto exit;
+        }
+
+        ret = fts_read_reg(reg_heatmap, &value_heatmap);
+        if (ret) {
+            FTS_ERROR("Read reg(%2X) error!", reg_heatmap);
+            goto exit;
+        }
+
+        if (value_heatmap == 0)
+            ts_data->fw_default_heatmap_mode = FW_HEATMAP_MODE_DISABLE;
+        else if (value_compressed)
+            ts_data->fw_default_heatmap_mode = FW_HEATMAP_MODE_COMPRESSED;
+        else
+            ts_data->fw_default_heatmap_mode = FW_HEATMAP_MODE_UNCOMPRESSED;
+
+exit:
+        if (ret == 0) {
+            FTS_DEBUG("Default fw_heatamp is %s and %s.\n",
+                value_compressed? "compressed" : "uncompressed",
+                value_heatmap ? "enabled" : "disabled");
+        }
+    }
+    return ret;
+}
+
 int fts_set_heatmap_mode(struct fts_ts_data *ts_data, u8 heatmap_mode)
 {
     int ret = 0;
@@ -3404,7 +3461,7 @@ int fts_set_glove_mode(struct fts_ts_data *ts_data, bool en)
 void fts_update_feature_setting(struct fts_ts_data *ts_data)
 {
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    fts_set_heatmap_mode(ts_data, FW_HEATMAP_MODE_COMPRESSED);
+    fts_set_heatmap_mode(ts_data, ts_data->fw_default_heatmap_mode);
 #endif
 
     fts_set_grip_mode(ts_data, ts_data->enable_fw_grip);

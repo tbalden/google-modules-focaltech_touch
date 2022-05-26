@@ -243,6 +243,7 @@ struct fts_ts_data {
     bool charger_mode;
     bool gesture_mode;      /* gesture enable or disable, default: disable */
     bool prc_mode;
+    bool driver_probed;
     struct pen_event pevent;
     /* multi-touch */
     struct ts_event *events;
@@ -279,6 +280,7 @@ struct fts_ts_data {
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     u8 fw_heatmap_mode;
+    u8 fw_default_heatmap_mode;
     int compress_heatmap_wlen;
 #endif
     u8 enable_fw_grip;
@@ -393,8 +395,12 @@ int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data);
 int fts_gesture_suspend(struct fts_ts_data *ts_data);
 int fts_gesture_resume(struct fts_ts_data *ts_data);
 
-/* Heatmap */
+/* Heatmap and Offload*/
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
+    IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+int fts_get_default_heatmap_mode(struct fts_ts_data *ts_data);
 int fts_set_heatmap_mode(struct fts_ts_data *ts_data, u8 heatmap_mode);
+#endif
 int fts_set_grip_mode(struct fts_ts_data *ts_datam, u8 grip_mode);
 int fts_set_palm_mode(struct fts_ts_data *ts_data, u8 palm_mode);
 int fts_set_continuous_mode(struct fts_ts_data *ts_data, bool en);
