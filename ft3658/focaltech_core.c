@@ -2968,15 +2968,17 @@ static int fts_ts_remove_entry(struct fts_ts_data *ts_data)
     fts_point_report_check_exit(ts_data);
 #endif
     fts_release_apk_debug_channel(ts_data);
+
+#if FTS_TEST_EN
+    /* remove the test nodes and sub-dir in /proc/focaltech_touch/selftest/ */
+    fts_test_exit(ts_data);
+#endif
+    /* remove all nodes and sub-dir in /proc/focaltech_touch/ */
     fts_remove_sysfs(ts_data);
 
     fts_ex_mode_exit(ts_data);
 
     fts_fwupg_exit(ts_data);
-
-#if FTS_TEST_EN
-    fts_test_exit(ts_data);
-#endif
 
 #if FTS_ESDCHECK_EN
     fts_esdcheck_exit(ts_data);

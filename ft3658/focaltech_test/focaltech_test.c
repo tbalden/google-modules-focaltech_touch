@@ -3648,7 +3648,7 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
 
     proc_test_baseline = proc_create_data("Baseline", S_IRUSR,
         fts_proc_test_dir, &proc_test_baseline_fops, ts_data);
-    if (!proc_test_raw) {
+    if (!proc_test_baseline) {
         FTS_ERROR("create proc_test_baseline entry fail");
         return -ENOMEM;
     }
@@ -3662,7 +3662,7 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
 
     proc_test_uniformity = proc_create_data("Rawdata_Uniformity", S_IRUSR,
         fts_proc_test_dir, &proc_test_uniformity_fops, ts_data);
-    if (!proc_test_raw) {
+    if (!proc_test_uniformity) {
         FTS_ERROR("create proc_test_uniformity entry fail");
         return -ENOMEM;
     }
@@ -3706,58 +3706,6 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
     return ret;
 }
 
-static void fts_free_test_procs(void)
-{
-    FTS_TEST_FUNC_ENTER();
-
-    if (proc_run_os_test)
-        proc_remove(proc_run_os_test);
-
-    if (proc_test_fwver)
-        proc_remove(proc_test_fwver);
-
-    if (proc_test_chnum)
-        proc_remove(proc_test_chnum);
-
-    if (proc_test_reset_pin)
-        proc_remove(proc_test_reset_pin);
-
-    if (proc_test_sw_reset)
-        proc_remove(proc_test_sw_reset);
-
-    if (proc_test_int_pin)
-        proc_remove(proc_test_int_pin);
-
-    if (proc_test_raw)
-        proc_remove(proc_test_raw);
-
-    if (proc_test_baseline)
-        proc_remove(proc_test_baseline);
-
-    if (proc_test_uniformity)
-        proc_remove(proc_test_uniformity);
-
-    if (proc_test_sraw)
-        proc_remove(proc_test_sraw);
-
-    if (proc_test_scb)
-        proc_remove(proc_test_scb);
-
-    if (proc_test_noise)
-        proc_remove(proc_test_noise);
-
-    if (proc_test_short)
-        proc_remove(proc_test_short);
-
-    if (proc_test_panel_differ)
-        proc_remove(proc_test_panel_differ);
-
-    if (proc_test_strength)
-        proc_remove(proc_test_strength);
-
-    FTS_TEST_FUNC_EXIT();
-}
-
 int fts_test_init(struct fts_ts_data *ts_data)
 {
     int ret = 0;
@@ -3799,7 +3747,6 @@ int fts_test_exit(struct fts_ts_data *ts_data)
 {
     FTS_TEST_FUNC_ENTER();
 
-    fts_free_test_procs();
     if (fts_proc_test_dir)
         proc_remove(fts_proc_test_dir);
     sysfs_remove_group(&ts_data->dev->kobj, &fts_test_attribute_group);
