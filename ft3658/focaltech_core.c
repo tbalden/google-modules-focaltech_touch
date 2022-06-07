@@ -96,7 +96,7 @@ static char *status_list_str[STATUS_CNT_END] = {
     "Grip",
     "Glove",
     "Edge palm",
-    "LPTW",
+    "RESET",
 };
 
 static char *feature_list_str[FW_CNT_END] = {
@@ -864,9 +864,16 @@ static int fts_read_touchdata(struct fts_ts_data *data)
                 } else {
                     bool status_changed = check_regB2_status[0] & (1 << i);
                     bool new_status = regB2_data[0] & (1 << i);
-                    if (status_changed)
+                    if (status_changed) {
                         FTS_INFO("-------%s %s\n", status_list_str[i],
                             new_status ? "enter" : "exit");
+                        if (i == STATUS_RESET && new_status) {
+                            /* Write 0x01 to register(0xEC) to clear the reset
+                             * flag in bit 7 of register(0xB2).
+                             */
+                            fts_write_reg(FTS_REG_CLR_RESET, 0x01);
+                        }
+                    }
                 }
             }
             data->current_host_status[0] = regB2_data[0];
@@ -3092,8 +3099,8 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
         (ts_data->current_host_status[0] & (1 << STATUS_GLOVE)) ? "enter" : "exit");
     FTS_INFO("-------Edge palm %s\n",
         (ts_data->current_host_status[0] & (1 << STATUS_EDGE_PALM)) ? "enter" : "exit");
-    FTS_INFO("-------LPTW %s\n",
-        (ts_data->current_host_status[0] & (1 << STATUS_LPTW)) ? "enter" : "exit");
+    FTS_INFO("-------Reset %s\n",
+        (ts_data->current_host_status[0] & (1 << STATUS_RESET)) ? "enter" : "exit");
 #endif
 
     ts_data->driver_probed = true;

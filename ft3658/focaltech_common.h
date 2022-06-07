@@ -123,6 +123,7 @@
 #define FTS_REG_MONITOR_CTRL                0x86
 #define FTS_REG_SENSE_ONOFF                 0xEA
 #define FTS_REG_IRQ_ONOFF                   0xEB
+#define FTS_REG_CLR_RESET                   0xEC
 
 #define FTS_REG_HEATMAP_1E                  0x1E
 #define FTS_REG_HEATMAP_ED                  0xED
