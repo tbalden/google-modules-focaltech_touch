@@ -236,6 +236,13 @@ enum FW_PALM_MODE {
     FW_PALM_FORCE_ENABLE,
 };
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
+enum TBN_OWRER {
+    TBN_AP,
+    TBN_AOC,
+};
+#endif
+
 /*****************************************************************************
 * DEBUG function define here
 *****************************************************************************/

@@ -80,7 +80,12 @@ static int fts_spi_transfer(u8 *tx_buf, u8 *rx_buf, u32 len)
         .len    = len,
         .bits_per_word = len >= 64 ? 32 : 8,
     };
-
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
+    if (fts_data->tbn_owner != TBN_AP) {
+        FTS_ERROR("SPI bus is not available.");
+        return -EACCES;
+    }
+#endif
     spi_message_init(&msg);
     spi_message_add_tail(&xfer, &msg);
 
@@ -230,6 +235,8 @@ int fts_write(u8 *writebuf, u32 writelen)
         } else {
             FTS_DEBUG("data write(addr:%x),status:%x,retry:%d,ret:%d",
                       writebuf[0], rxbuf[3], i, ret);
+            if (ret == -EACCES)
+                break;
             ret = -EIO;
             udelay(CS_HIGH_DELAY);
         }
@@ -349,6 +356,8 @@ int fts_read(u8 *cmd, u32 cmdlen, u8 *data, u32 datalen)
         } else {
             FTS_DEBUG("data read(addr:%x) status:%x,retry:%d,ret:%d",
                       cmd[0], rxbuf[3], i, ret);
+            if (ret == -EACCES)
+                break;
             ret = -EIO;
             udelay(CS_HIGH_DELAY);
         }

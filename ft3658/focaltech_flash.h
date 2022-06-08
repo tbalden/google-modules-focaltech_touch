@@ -72,7 +72,7 @@
 #define FTS_DELAY_UPGRADE_RESET                     80
 #define PRAMBOOT_MIN_SIZE                           0x120
 #define PRAMBOOT_MAX_SIZE                           (64*1024)
-#define FTS_FLASH_PACKET_LENGTH                     32     /* max=128 */
+#define FTS_FLASH_PACKET_LENGTH                     128     /* max=128 */
 #define FTS_MAX_LEN_ECC_CALC                        0xFFFE /* must be even */
 #define FTS_MIN_LEN                                 0x120
 #define FTS_MAX_LEN_FILE                            (256 * 1024)
