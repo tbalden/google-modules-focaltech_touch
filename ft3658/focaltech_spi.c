@@ -41,7 +41,13 @@
 *****************************************************************************/
 #define SPI_RETRY_NUMBER            3
 #define CS_HIGH_DELAY               150 /* unit: us */
-#define SPI_BUF_LENGTH              256
+
+/* The touch data size is 1451 bytes = (cap header(91 bytes) + MS(1088 bytes) +
+ * water_SS(136 bytes) + normal-SS(136 bytes)), so set SPI_BUF_LENGTH larger
+ * than 1451 to prevent SPI buff from being allocated and freed on every touch
+ * data transfer.
+ */
+#define SPI_BUF_LENGTH              1536 /* ALIGN(1451, 256) */
 
 #define DATA_CRC_EN                 0x20
 #define WRITE_CMD                   0x00
