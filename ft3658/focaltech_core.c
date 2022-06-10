@@ -125,23 +125,26 @@ int fts_wait_tp_to_valid(void)
     u8 idh = 0;
     struct fts_ts_data *ts_data = fts_data;
     u8 chip_idh = ts_data->ic_info.ids.chip_idh;
+    u16 retry_duration = 0;
 
     do {
         ret = fts_read_reg(FTS_REG_CHIP_ID, &idh);
-        if (ret == -EIO) {
-            FTS_ERROR("Wait tp with unexpected I/O error, ret: %d", ret);
-            return ret;
-        }
 
         if (ret == 0 && ((idh == chip_idh) || (fts_check_cid(ts_data, idh) == 0))) {
-            FTS_INFO("TP Ready,Device ID:0x%02x", idh);
+            FTS_INFO("TP Ready,Device ID:0x%02x, retry:%d", idh, cnt);
             return 0;
         }
 
-        FTS_DEBUG("TP Not Ready,ReadData:0x%02x,ret:%d", idh, ret);
         cnt++;
-        msleep(INTERVAL_READ_REG);
-    } while ((cnt * INTERVAL_READ_REG) < TIMEOUT_READ_REG);
+        if (ret == -EIO) {
+            fts_reset_proc(FTS_RESET_INTERVAL);
+            retry_duration += FTS_RESET_INTERVAL;
+        } else {
+            msleep(INTERVAL_READ_REG);
+            retry_duration += INTERVAL_READ_REG;
+        }
+
+    } while (retry_duration < TIMEOUT_READ_REG);
 
     FTS_ERROR("Wait tp timeout");
     return -ETIMEDOUT;
@@ -367,7 +370,6 @@ static int fts_get_ic_information(struct fts_ts_data *ts_data)
 
     ts_data->ic_info.is_incell = FTS_CHIP_IDC;
     ts_data->ic_info.hid_supported = FTS_HID_SUPPORTTED;
-
 
     do {
         ret = fts_read_reg(FTS_REG_CHIP_ID, &chip_id[0]);
@@ -2679,7 +2681,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 #endif
 
 #if (!FTS_CHIP_IDC)
-    fts_reset_proc(200);
+    fts_reset_proc(FTS_RESET_INTERVAL);
 #endif
 
     ret = fts_get_ic_information(ts_data);
@@ -3277,7 +3279,7 @@ static int fts_ts_resume(struct device *dev)
 #if FTS_POWER_SOURCE_CUST_EN
         fts_power_source_resume(ts_data);
 #endif
-        fts_reset_proc(200);
+        fts_reset_proc(FTS_RESET_INTERVAL);
     }
 
     ret = fts_wait_tp_to_valid();
