@@ -223,6 +223,7 @@ struct fts_ts_data {
     spinlock_t irq_lock;
     struct mutex report_mutex;
     struct mutex bus_lock;
+    struct mutex reg_lock;
     struct mutex device_mutex;
     struct completion bus_resumed;
     unsigned long intr_jiffies;
@@ -289,6 +290,7 @@ struct fts_ts_data {
                         * touch IC, acquired during hard interrupt, in
                         * CLOCK_MONOTONIC */
     ktime_t coords_timestamp;
+    bool is_deepsleep;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     u8 *heatmap_raw;
