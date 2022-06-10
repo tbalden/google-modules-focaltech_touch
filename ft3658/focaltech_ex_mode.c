@@ -265,9 +265,8 @@ static struct attribute_group fts_touch_mode_group = {
 
 int fts_ex_mode_recovery(struct fts_ts_data *ts_data)
 {
-    if (ts_data->glove_mode) {
-        fts_ex_mode_switch(MODE_GLOVE, ENABLE);
-    }
+    /* update firmware feature settings. */
+    fts_update_feature_setting(ts_data);
 
     if (ts_data->cover_mode) {
         fts_ex_mode_switch(MODE_COVER, ENABLE);

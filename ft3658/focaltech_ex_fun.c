@@ -2090,6 +2090,7 @@ static ssize_t proc_heatmap_onoff_read(struct file *filp,
     int ret = 0;
     char tmpbuf[PROC_BUF_SIZE] = { 0 };
     u8 mode = 0;
+    u8 compressed = 0;
     loff_t pos = *ppos;
 
     if (pos)
@@ -2097,11 +2098,21 @@ static ssize_t proc_heatmap_onoff_read(struct file *filp,
 
     ret = fts_read_reg(FTS_REG_HEATMAP_9E, &mode);
     if (ret < 0) {
-        FTS_ERROR("read reg_0x9E fails");
+        FTS_ERROR("read reg_0x%X fails", FTS_REG_HEATMAP_9E);
         return ret;
     }
 
-    cnt += snprintf(tmpbuf + cnt,  PROC_BUF_SIZE - cnt, "heatmap function is %s\n",
+    if (mode) {
+        fts_read_reg(FTS_REG_HEATMAP_ED, &compressed);
+        if (ret < 0) {
+            FTS_ERROR("read reg_0x%X fails", FTS_REG_HEATMAP_ED);
+            return ret;
+        }
+        cnt += snprintf(tmpbuf + cnt,  PROC_BUF_SIZE - cnt, "%s ",
+            compressed ? "Compressed" : "Uncompressed");
+    }
+
+    cnt += snprintf(tmpbuf + cnt,  PROC_BUF_SIZE - cnt, "heatmap is %s\n",
                     mode ? "Enable" : "Disable");
 
     if (copy_to_user(buff, tmpbuf, cnt)) {
@@ -2138,9 +2149,15 @@ static ssize_t proc_heatmap_onoff_write(struct file *filp,
         return -EINVAL;
     }
 
+    if (mode < FW_HEATMAP_MODE_DISABLE || mode > FW_HEATMAP_MODE_UNCOMPRESSED) {
+        FTS_ERROR("Please input the parameters in \n \
+             0: Disable firmware heatmap. \n \
+             1: Enable firmware compressed heatmap. \n \
+             2: Enable firmware uncompressed heatmap.");
+        return -EINVAL;
+    }
     FTS_INFO("switch heatmap on/off to %d", mode);
-    fts_set_heatmap_mode(ts_data, !!mode);
-
+    fts_set_heatmap_mode(ts_data, mode);
     return count;
 }
 
