@@ -2801,6 +2801,8 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     spin_lock_init(&ts_data->irq_lock);
     mutex_init(&ts_data->report_mutex);
     mutex_init(&ts_data->bus_lock);
+    mutex_init(&ts_data->reg_lock);
+    ts_data->is_deepsleep = false;
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
     ts_data->power_status = FTS_TS_STATE_POWER_ON;
@@ -3430,14 +3432,18 @@ int fts_set_continuous_mode(struct fts_ts_data *ts_data, bool en)
     u8 value = en ? ENABLE : DISABLE;
     u8 reg = FTS_REG_CONTINUOUS_EN;
 
-    ret = fts_write_reg_safe(reg, value);
-    if (ret == 0) {
-        ts_data->set_continuously_report = value;
-        fts_update_host_feature_setting(ts_data, en, FW_CONTINUOUS);
-    }
+    mutex_lock(&ts_data->reg_lock);
+    if (!ts_data->is_deepsleep) {
+        ret = fts_write_reg_safe(reg, value);
+        if (ret == 0) {
+            ts_data->set_continuously_report = value;
+            fts_update_host_feature_setting(ts_data, en, FW_CONTINUOUS);
+        }
 
-    PR_LOGD("%s fw_continuous %s.\n", en ? "Enable" : "Disable",
-        (ret == 0) ? "successfully" : "unsuccessfully");
+        PR_LOGD("%s fw_continuous %s.\n", en ? "Enable" : "Disable",
+            (ret == 0) ? "successfully" : "unsuccessfully");
+    }
+    mutex_unlock(&ts_data->reg_lock);
     return ret;
 }
 
@@ -3526,7 +3532,10 @@ static int fts_ts_suspend(struct device *dev)
     fts_set_heatmap_mode(ts_data, FW_HEATMAP_MODE_DISABLE);
 #endif
         FTS_DEBUG("make TP enter into sleep mode");
+        mutex_lock(&ts_data->reg_lock);
         ret = fts_write_reg(FTS_REG_POWER_MODE, FTS_REG_POWER_MODE_SLEEP);
+        ts_data->is_deepsleep = true;
+        mutex_unlock(&ts_data->reg_lock);
         if (ret < 0)
             FTS_ERROR("set TP to sleep mode fail, ret=%d", ret);
 
@@ -3575,6 +3584,7 @@ static int fts_ts_resume(struct device *dev)
         return ret;
     }
 
+    ts_data->is_deepsleep = false;
     fts_ex_mode_recovery(ts_data);
 
 #if FTS_ESDCHECK_EN
