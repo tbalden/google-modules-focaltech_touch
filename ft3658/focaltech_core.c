@@ -50,6 +50,7 @@
 #include <linux/earlysuspend.h>
 #define FTS_SUSPEND_LEVEL 1     /* Early-suspend level */
 #endif
+#include <linux/types.h>
 #include "focaltech_core.h"
 
 /*****************************************************************************
@@ -828,15 +829,15 @@ static int fts_read_touchdata(struct fts_ts_data *data)
         FTS_ERROR("touch data(%x) abnormal,ret:%d", buf[1], ret);
         return -EIO;
     }
+#endif
 
     if (data->gesture_mode) {
-        ret = fts_gesture_readdata(data, buf + FTS_TOUCH_DATA_LEN);
+        ret = fts_gesture_readdata(data, true);
         if (ret == 0) {
             FTS_INFO("succuss to get gesture data in irq handler");
             return 1;
         }
     }
-#endif
 
 #if IS_ENABLED(GOOGLE_REPORT_MODE)
     if (data->work_mode == FTS_REG_WORKMODE_WORK_VALUE) {
@@ -3549,7 +3550,7 @@ static int fts_ts_suspend(struct device *dev)
         fts_irq_disable();
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    fts_set_heatmap_mode(ts_data, FW_HEATMAP_MODE_DISABLE);
+        fts_set_heatmap_mode(ts_data, FW_HEATMAP_MODE_DISABLE);
 #endif
         FTS_DEBUG("make TP enter into sleep mode");
         mutex_lock(&ts_data->reg_lock);
@@ -3575,6 +3576,85 @@ static int fts_ts_suspend(struct device *dev)
     return 0;
 }
 
+
+/**
+ * Report a finger down event on the long press gesture area then immediately
+ * report a cancel event(MT_TOOL_PALM).
+ */
+static void fts_report_cancel_event(struct fts_ts_data *ts_data)
+{
+    FTS_INFO("Report cancel event for UDFPS");
+
+    mutex_lock(&ts_data->report_mutex);
+    /* Finger down on UDFPS area. */
+    input_mt_slot(ts_data->input_dev, 0);
+    input_report_key(ts_data->input_dev, BTN_TOUCH, 1);
+    input_mt_report_slot_state(ts_data->input_dev, MT_TOOL_FINGER, 1);
+    input_report_abs(ts_data->input_dev, ABS_MT_POSITION_X,
+        ts_data->fts_gesture_data.coordinate_x[0]);
+    input_report_abs(ts_data->input_dev, ABS_MT_POSITION_Y,
+        ts_data->fts_gesture_data.coordinate_y[0]);
+    input_report_abs(ts_data->input_dev, ABS_MT_TOUCH_MAJOR,
+        ts_data->fts_gesture_data.major[0]);
+    input_report_abs(ts_data->input_dev, ABS_MT_TOUCH_MINOR,
+        ts_data->fts_gesture_data.minor[0]);
+#ifndef SKIP_PRESSURE
+    input_report_abs(ts_data->input_dev, ABS_MT_PRESSURE, 1);
+#endif
+    input_report_abs(ts_data->input_dev, ABS_MT_ORIENTATION,
+        ts_data->fts_gesture_data.orientation[0]);
+    input_sync(ts_data->input_dev);
+
+    /* Report MT_TOOL_PALM for canceling the touch event. */
+    input_mt_slot(ts_data->input_dev, 0);
+    input_report_key(ts_data->input_dev, BTN_TOUCH, 1);
+    input_mt_report_slot_state(ts_data->input_dev, MT_TOOL_PALM, 1);
+    input_sync(ts_data->input_dev);
+
+    /* Release touches. */
+    input_mt_slot(ts_data->input_dev, 0);
+#ifndef SKIP_PRESSURE
+    input_report_abs(ts_data->input_dev, ABS_MT_PRESSURE, 0);
+#endif
+    input_mt_report_slot_state(ts_data->input_dev, MT_TOOL_FINGER, 0);
+    input_report_abs(ts_data->input_dev, ABS_MT_TRACKING_ID, -1);
+    input_report_key(ts_data->input_dev, BTN_TOUCH, 0);
+    input_sync(ts_data->input_dev);
+    mutex_unlock(&ts_data->report_mutex);
+}
+
+static void fts_check_finger_status(struct fts_ts_data *ts_data)
+{
+    int ret = 0;
+    u8 power_mode = FTS_REG_POWER_MODE_SLEEP;
+    ktime_t timeout = ktime_add_ms(ktime_get(), 500); /* 500ms. */
+
+    /* If power mode is deep sleep mode, then reurn. */
+    ret = fts_read_reg(FTS_REG_POWER_MODE, &power_mode);
+    if (ret)
+        return;
+
+    if (power_mode == FTS_REG_POWER_MODE_SLEEP)
+        return;
+
+    while (ktime_get() < timeout) {
+        ret = fts_gesture_readdata(ts_data, false);
+        if (ret)
+            break;
+
+        if (ts_data->fts_gesture_data.gesture_id == FTS_GESTURE_ID_LPTW_DOWN) {
+            msleep(30);
+            continue;
+        }
+
+        if (ts_data->fts_gesture_data.gesture_id == FTS_GESTURE_ID_LPTW_UP ||
+            ts_data->fts_gesture_data.gesture_id == FTS_GESTURE_ID_STTW) {
+            fts_report_cancel_event(ts_data);
+        }
+        break;
+    }
+}
+
 static int fts_ts_resume(struct device *dev)
 {
     struct fts_ts_data *ts_data = fts_data;
@@ -3589,9 +3669,13 @@ static int fts_ts_resume(struct device *dev)
     fts_release_all_finger();
 
     if (!ts_data->ic_info.is_incell) {
+        if (!ts_data->gesture_mode) {
 #if FTS_POWER_SOURCE_CUST_EN
-        fts_power_source_resume(ts_data);
+            fts_power_source_resume(ts_data);
 #endif
+            fts_check_finger_status(ts_data);
+        }
+
         fts_reset_proc(FTS_RESET_INTERVAL);
     }
 
@@ -3599,7 +3683,8 @@ static int fts_ts_resume(struct device *dev)
     if (ret != 0) {
         FTS_ERROR("Resume has been cancelled by wake up timeout");
 #if FTS_POWER_SOURCE_CUST_EN
-        fts_power_source_suspend(ts_data);
+        if (!ts_data->gesture_mode)
+            fts_power_source_suspend(ts_data);
 #endif
         return ret;
     }
