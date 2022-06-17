@@ -1195,6 +1195,8 @@ err_bin:
     fts_esdcheck_switch(ENABLE);
 #endif
 
+    fts_get_default_heatmap_mode(upg->ts_data);
+    upg->ts_data->fw_heatmap_mode = upg->ts_data->fw_default_heatmap_mode;
     /* Update firmware feature settings after flashing firmware. */
     fts_update_feature_setting(upg->ts_data);
 
@@ -1995,6 +1997,8 @@ static void fts_fwupg_work(struct work_struct *work)
     fts_esdcheck_switch(ENABLE);
 #endif
 
+    fts_get_default_heatmap_mode(upg->ts_data);
+    upg->ts_data->fw_heatmap_mode = upg->ts_data->fw_default_heatmap_mode;
     /* Update firmware feature settings after flashing firmware. */
     fts_update_feature_setting(upg->ts_data);
 

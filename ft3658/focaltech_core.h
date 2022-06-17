@@ -223,6 +223,7 @@ struct fts_ts_data {
     spinlock_t irq_lock;
     struct mutex report_mutex;
     struct mutex bus_lock;
+    struct mutex reg_lock;
     struct mutex device_mutex;
     struct completion bus_resumed;
     unsigned long intr_jiffies;
@@ -243,6 +244,7 @@ struct fts_ts_data {
     bool charger_mode;
     bool gesture_mode;      /* gesture enable or disable, default: disable */
     bool prc_mode;
+    bool driver_probed;
     struct pen_event pevent;
     /* multi-touch */
     struct ts_event *events;
@@ -255,6 +257,10 @@ struct fts_ts_data {
     int key_state;
     int touch_point;
     int point_num;
+
+#if GOOGLE_REPORT_MODE
+    u8 current_host_status[FTS_CUSTOMER_STATUS_LEN];
+#endif
 
     /* Motion filter mode.
      *  MF_OFF    : 0 = Always unfilter.
@@ -274,7 +280,9 @@ struct fts_ts_data {
     u8 work_mode;
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
-    bool enable_fw_heatmap;
+    u8 fw_heatmap_mode;
+    u8 fw_default_heatmap_mode;
+    int compress_heatmap_wlen;
 #endif
     u8 enable_fw_grip;
     u8 enable_fw_palm;
@@ -282,11 +290,16 @@ struct fts_ts_data {
                         * touch IC, acquired during hard interrupt, in
                         * CLOCK_MONOTONIC */
     ktime_t coords_timestamp;
+    bool is_deepsleep;
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     u8 *heatmap_raw;
+    u16 heatmap_raw_size;
     u8 *trans_raw;
+    u16 trans_raw_size;
     u16 *heatmap_buff;
+    u16 heatmap_buff_size;
+    u8 self_sensing_type;
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
     struct touch_offload_context offload;
@@ -338,8 +351,17 @@ enum FTS_CUSTOMER_STATUS {
     STATUS_GRIP,
     STATUS_GLOVE,
     STATUS_EDGE_PALM,
-    STATUS_LPTW,
+    STATUS_RESET,
     STATUS_CNT_END,
+};
+
+enum FTS_FW_MODE_SETTING{
+    FW_GLOVE = 0,
+    FW_GRIP,
+    FW_PALM,
+    FW_HEATMAP,
+    FW_CONTINUOUS,
+    FW_CNT_END,
 };
 #endif
 
@@ -375,8 +397,12 @@ int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data);
 int fts_gesture_suspend(struct fts_ts_data *ts_data);
 int fts_gesture_resume(struct fts_ts_data *ts_data);
 
-/* Heatmap */
-int fts_set_heatmap_mode(struct fts_ts_data *ts_data, bool en);
+/* Heatmap and Offload*/
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
+    IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
+int fts_get_default_heatmap_mode(struct fts_ts_data *ts_data);
+int fts_set_heatmap_mode(struct fts_ts_data *ts_data, u8 heatmap_mode);
+#endif
 int fts_set_grip_mode(struct fts_ts_data *ts_datam, u8 grip_mode);
 int fts_set_palm_mode(struct fts_ts_data *ts_data, u8 palm_mode);
 int fts_set_continuous_mode(struct fts_ts_data *ts_data, bool en);

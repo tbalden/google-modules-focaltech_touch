@@ -2618,7 +2618,7 @@ static const struct file_operations proc_test_int_fops = {
 
 extern int fts_test_get_raw(int *raw, u8 tx, u8 rx);
 extern int fts_test_get_baseline(int *raw,int *base_raw, u8 tx, u8 rx);
-extern int fts_test_get_strength(u8 *base_raw, u8 tx, u8 rx);
+extern int fts_test_get_strength(u8 *base_raw, u16 base_raw_size);
 extern int fts_test_get_uniformity_data(int *rawdata_linearity, u8 tx, u8 rx);
 extern int fts_test_get_scap_raw(int *scap_raw, u8 tx, u8 rx, int *fwcheck);
 extern int fts_test_get_scap_cb(int *scap_cb, u8 tx, u8 rx, int *fwcheck);
@@ -2812,15 +2812,22 @@ static const struct file_operations proc_test_baseline_fops = {
 #endif
 
 /* Strength test for full size */
-/* transpose raw */
-void transpose_raw(u8 *src, u8 *dist, int tx, int rx) {
+/* Transpose raw */
+void transpose_raw(u8 *src, u8 *dist, int tx, int rx, bool big_endian) {
     int i = 0;
     int j = 0;
 
     for (i = 0; i < tx; i++) {
         for (j = 0; j < rx; j++) {
-            dist[(j * tx + i) * 2] = src[(i * rx + j) * 2];
-            dist[(j * tx + i) * 2 + 1] = src[(i * rx + j) * 2 + 1];
+            if (big_endian) {
+                /* keep big_endian. */
+                dist[(j * tx + i) * 2] = src[(i * rx + j) * 2];
+                dist[(j * tx + i) * 2 + 1] = src[(i * rx + j) * 2 + 1];
+           } else {
+                /* transfer to big_endian. */
+                dist[(j * tx + i) * 2] = src[(i * rx + j) * 2 + 1];
+                dist[(j * tx + i) * 2 + 1] = src[(i * rx + j) * 2];
+           }
         }
     }
 }
@@ -2832,21 +2839,25 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     int i = 0;
     int node_num = 0;
     int self_node = 0;
-    int self_cap_num = 0;
-    int self_cap_num_off = 0;
-    int self_cap_offset = 91;
-    int self_cap_len = 68;
-    u8 tx = 16;
-    u8 rx = 34;
+    u8 tx = ts_data->pdata->tx_ch_num;
+    u8 rx = ts_data->pdata->rx_ch_num;
+    /* The format of uncompressed heatmap from touch chip.
+     *
+     * |- cap header (91) -|- Water-SS -|- Normal-SS -|- Normal-MS -|
+     * |-        91       -|-   68*2   -|-   68*2    -|-  16*34*2  -|
+     */
+    int ss_cap_on_idx = FTS_CAP_DATA_LEN;
+    int ss_cap_off_idx = ss_cap_on_idx + FTS_SELF_DATA_LEN * sizeof(u16);
+    int ms_cap_idx = ss_cap_off_idx + FTS_SELF_DATA_LEN * sizeof(u16);
     short base_result = 0;
 
     u8 *base_raw = NULL;
     u8 *trans_raw = NULL;
-    int base_raw_len = 0;
+    int base_raw_size = 0;
     int base = 0;
-    int Fast_events_x = 0;
-    int Fast_events_y = 0;
-    u8 Fast_events_id = 0;
+    int fast_events_x = 0;
+    int fast_events_y = 0;
+    u8 fast_events_id = 0;
 
     fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_work_mode();
@@ -2856,11 +2867,10 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
 
     node_num = tx * rx;
     self_node = tx + rx;
-    self_cap_num = self_cap_offset + node_num * sizeof(u16);
-    self_cap_num_off = self_cap_num + self_cap_len * sizeof(u16);
-    base_raw_len = self_cap_num + self_cap_len * 2 * sizeof(u16);
-    FTS_DEBUG("heapmap base_raw length = %d", base_raw_len);
-    base_raw = fts_malloc(base_raw_len);
+
+    base_raw_size = FTS_FULL_HEATMAP_RAW_SIZE(tx, rx);
+    FTS_DEBUG("heapmap base_raw size = %d", base_raw_size);
+    base_raw = fts_malloc(base_raw_size);
     if (!base_raw) {
         FTS_ERROR("malloc memory for raw fails");
         ret = -ENOMEM;
@@ -2875,7 +2885,7 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     }
 
     /* get strength data. */
-    ret = fts_test_get_strength(base_raw, tx, rx);
+    ret = fts_test_get_strength(base_raw, base_raw_size);
     if (ret < 0) {
         FTS_ERROR("get strength fails");
         goto exit;
@@ -2885,19 +2895,19 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     for (i = 0; i < base_raw[1]; i++) {
          base = FTS_ONE_TCH_LEN * i;
 
-         Fast_events_x = ((base_raw[2 + base] & 0x0F) << 8) +
+         fast_events_x = ((base_raw[2 + base] & 0x0F) << 8) +
                           (base_raw[3 + base] & 0xFF);
-         Fast_events_y = ((base_raw[4 + base] & 0x0F) << 8) +
+         fast_events_y = ((base_raw[4 + base] & 0x0F) << 8) +
                           (base_raw[5 + base] & 0xFF);
-         Fast_events_id = (base_raw[4 + base] & 0xF0) >> 4;
-         seq_printf(s, "Finger ID= %d , X= %d, y=%d\n", Fast_events_id,
-                    Fast_events_x, Fast_events_y);
+         fast_events_id = (base_raw[4 + base] & 0xF0) >> 4;
+         seq_printf(s, "Finger ID = %d , x = %d, y = %d\n", fast_events_id,
+                    fast_events_x, fast_events_y);
     }
 
     seq_printf(s, "     ");
     /* transpose data buffer. */
-    FTS_DEBUG("index(mutual) = %d", self_cap_offset);
-    transpose_raw(base_raw + self_cap_offset, trans_raw, tx, rx);
+    FTS_DEBUG("index of MS = %d", ms_cap_idx);
+    transpose_raw(base_raw + ms_cap_idx, trans_raw, tx, rx, true);
     for (i = 0; i < tx; i++)
         seq_printf(s, " TX%02d ", (i + 1));
 
@@ -2914,16 +2924,16 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     /*---------output self of strength data-----------*/
     seq_printf(s, "\n");
     seq_printf(s, "Scap raw(proof on):\n");
-    FTS_DEBUG("index(rx) = %d", self_cap_num);
+    FTS_DEBUG("index of SS_ON = %d", ss_cap_on_idx);
     for (i = 0; i < self_node; i++) {
-        base_result = (int)(base_raw[(i * 2) + self_cap_num] << 8) +
-                      (int)base_raw[(i * 2) + self_cap_num + 1];
+        base_result = (int)(base_raw[(i * 2) + ss_cap_on_idx] << 8) +
+                      (int)base_raw[(i * 2) + ss_cap_on_idx + 1];
 
         if (i == 0)
             seq_printf(s, "RX:");
 
         if (i == rx) {
-            FTS_DEBUG("index(tx) = %d", (self_cap_num + (i * 2)));
+            FTS_DEBUG("index(tx) = %d", (ss_cap_on_idx + (i * 2)));
             seq_printf(s, "\n");
             seq_printf(s, "TX:");
         }
@@ -2931,10 +2941,10 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     }
     seq_printf(s, "\n\n");
     seq_printf(s, "Scap raw(proof off):\n");
-
+    FTS_DEBUG("index of SS_OFF = %d", ss_cap_off_idx);
     for (i = 0; i < self_node; i++) {
-        base_result = (int)(base_raw[(i * 2) + self_cap_num_off] << 8) +
-                      (int)base_raw[(i * 2) + self_cap_num_off + 1];
+        base_result = (int)(base_raw[(i * 2) + ss_cap_off_idx] << 8) +
+                      (int)base_raw[(i * 2) + ss_cap_off_idx + 1];
 
         if (i == 0)
             seq_printf(s, "RX:");
@@ -3648,7 +3658,7 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
 
     proc_test_baseline = proc_create_data("Baseline", S_IRUSR,
         fts_proc_test_dir, &proc_test_baseline_fops, ts_data);
-    if (!proc_test_raw) {
+    if (!proc_test_baseline) {
         FTS_ERROR("create proc_test_baseline entry fail");
         return -ENOMEM;
     }
@@ -3662,7 +3672,7 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
 
     proc_test_uniformity = proc_create_data("Rawdata_Uniformity", S_IRUSR,
         fts_proc_test_dir, &proc_test_uniformity_fops, ts_data);
-    if (!proc_test_raw) {
+    if (!proc_test_uniformity) {
         FTS_ERROR("create proc_test_uniformity entry fail");
         return -ENOMEM;
     }
@@ -3706,58 +3716,6 @@ static int fts_create_test_procs(struct fts_ts_data *ts_data)
     return ret;
 }
 
-static void fts_free_test_procs(void)
-{
-    FTS_TEST_FUNC_ENTER();
-
-    if (proc_run_os_test)
-        proc_remove(proc_run_os_test);
-
-    if (proc_test_fwver)
-        proc_remove(proc_test_fwver);
-
-    if (proc_test_chnum)
-        proc_remove(proc_test_chnum);
-
-    if (proc_test_reset_pin)
-        proc_remove(proc_test_reset_pin);
-
-    if (proc_test_sw_reset)
-        proc_remove(proc_test_sw_reset);
-
-    if (proc_test_int_pin)
-        proc_remove(proc_test_int_pin);
-
-    if (proc_test_raw)
-        proc_remove(proc_test_raw);
-
-    if (proc_test_baseline)
-        proc_remove(proc_test_baseline);
-
-    if (proc_test_uniformity)
-        proc_remove(proc_test_uniformity);
-
-    if (proc_test_sraw)
-        proc_remove(proc_test_sraw);
-
-    if (proc_test_scb)
-        proc_remove(proc_test_scb);
-
-    if (proc_test_noise)
-        proc_remove(proc_test_noise);
-
-    if (proc_test_short)
-        proc_remove(proc_test_short);
-
-    if (proc_test_panel_differ)
-        proc_remove(proc_test_panel_differ);
-
-    if (proc_test_strength)
-        proc_remove(proc_test_strength);
-
-    FTS_TEST_FUNC_EXIT();
-}
-
 int fts_test_init(struct fts_ts_data *ts_data)
 {
     int ret = 0;
@@ -3799,7 +3757,6 @@ int fts_test_exit(struct fts_ts_data *ts_data)
 {
     FTS_TEST_FUNC_ENTER();
 
-    fts_free_test_procs();
     if (fts_proc_test_dir)
         proc_remove(fts_proc_test_dir);
     sysfs_remove_group(&ts_data->dev->kobj, &fts_test_attribute_group);
