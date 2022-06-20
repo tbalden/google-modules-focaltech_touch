@@ -2618,7 +2618,7 @@ static const struct file_operations proc_test_int_fops = {
 
 extern int fts_test_get_raw(int *raw, u8 tx, u8 rx);
 extern int fts_test_get_baseline(int *raw,int *base_raw, u8 tx, u8 rx);
-extern int fts_test_get_strength(u8 *base_raw, u8 tx, u8 rx);
+extern int fts_test_get_strength(u8 *base_raw, u16 base_raw_size);
 extern int fts_test_get_uniformity_data(int *rawdata_linearity, u8 tx, u8 rx);
 extern int fts_test_get_scap_raw(int *scap_raw, u8 tx, u8 rx, int *fwcheck);
 extern int fts_test_get_scap_cb(int *scap_cb, u8 tx, u8 rx, int *fwcheck);
@@ -2853,7 +2853,7 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
 
     u8 *base_raw = NULL;
     u8 *trans_raw = NULL;
-    int base_raw_len = 0;
+    int base_raw_size = 0;
     int base = 0;
     int fast_events_x = 0;
     int fast_events_y = 0;
@@ -2868,10 +2868,9 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     node_num = tx * rx;
     self_node = tx + rx;
 
-    base_raw_len =
-        FTS_CAP_DATA_LEN + (FTS_SELF_DATA_LEN * 2 + node_num) * sizeof(u16);
-    FTS_DEBUG("heapmap base_raw length = %d", base_raw_len);
-    base_raw = fts_malloc(base_raw_len);
+    base_raw_size = FTS_FULL_HEATMAP_RAW_SIZE(tx, rx);
+    FTS_DEBUG("heapmap base_raw size = %d", base_raw_size);
+    base_raw = fts_malloc(base_raw_size);
     if (!base_raw) {
         FTS_ERROR("malloc memory for raw fails");
         ret = -ENOMEM;
@@ -2886,7 +2885,7 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     }
 
     /* get strength data. */
-    ret = fts_test_get_strength(base_raw, tx, rx);
+    ret = fts_test_get_strength(base_raw, base_raw_size);
     if (ret < 0) {
         FTS_ERROR("get strength fails");
         goto exit;

@@ -821,7 +821,7 @@ static int fts_read_touchdata(struct fts_ts_data *data)
     ret = fts_get_heatmap(data);
     if (ret < 0)
         return ret;
-    memcpy(buf + 1,data->heatmap_raw, data->pnt_buf_size - 1);
+    memcpy(buf + 1, data->heatmap_raw, data->pnt_buf_size - 1);
 #else
     ret = fts_read(cmd, 1, buf + 1, data->pnt_buf_size - 1);
     if (ret < 0) {
@@ -1488,12 +1488,20 @@ static int fts_get_heatmap(struct fts_ts_data *ts_data) {
         /* Total touch data: (cap header(91) + heatmap(N-MS + W-SS + N-SS)). */
         total_data_size = FTS_CAP_DATA_LEN + self_data_size * 2 +
                           mutual_data_size;
+
+        if (total_data_size > ts_data->heatmap_raw_size) {
+            FTS_DEBUG("Warning : The total touch data size is %d!!",
+                total_data_size);
+            total_data_size = ts_data->heatmap_raw_size;
+        }
+
         ret = fts_read(cmd, 1, ts_data->heatmap_raw, total_data_size);
         if (ret < 0) {
             FTS_ERROR("Failed to get heatmap raw data, ret=%d.", ret);
             ret = -EIO;
             goto exit;
         }
+
         /* Get the self-sensing type. */
         ts_data->self_sensing_type =
             ts_data->heatmap_raw[FTS_CAP_DATA_LEN - 1] & 0x80;
@@ -1511,11 +1519,25 @@ static int fts_get_heatmap(struct fts_ts_data *ts_data) {
          * |-     91     -|-   68*2   -|-   68*2    -|- (B2[1]<<8+B2[2])*2    -|
          */
 
+        if (ts_data->compress_heatmap_wlen < 0 ||
+            (ts_data->compress_heatmap_wlen * sizeof(u16)) > mutual_data_size) {
+            FTS_DEBUG("Warning : The compressed heatmap size is %d!!",
+                ts_data->compress_heatmap_wlen);
+            ts_data->compress_heatmap_wlen = 0;
+            memset(ts_data->trans_raw, 0, ts_data->trans_raw_size);
+        }
+
         /* Total touch data:(cap header + W-SS + N-SS + compressed heatmap(N-MS)
          */
         total_data_size = FTS_CAP_DATA_LEN +
                           self_data_size * 2 +
                           ts_data->compress_heatmap_wlen * sizeof(u16);
+
+        if (total_data_size > ts_data->heatmap_raw_size) {
+            FTS_DEBUG("Warning : The total touch data size is %d!!",
+                total_data_size);
+            total_data_size = ts_data->heatmap_raw_size;
+        }
 
         ret = fts_read(cmd, 1, ts_data->heatmap_raw, total_data_size);
         if (ret < 0) {
@@ -1523,28 +1545,26 @@ static int fts_get_heatmap(struct fts_ts_data *ts_data) {
             ret = -EIO;
             goto exit;
         }
-        if (ts_data->compress_heatmap_wlen == 0) {
-            FTS_DEBUG("Warning : The compressed heatmap length is 0!!");
-            goto exit;
-        }
 
         /* Get the self-sensing type. */
         ts_data->self_sensing_type =
             ts_data->heatmap_raw[FTS_CAP_DATA_LEN - 1] & 0x80;
 
-        /* decode the compressed data from heatmap_raw to heatmap_buff. */
-        fts_ptflib_decoder(ts_data,
-            (u16*)(&ts_data->heatmap_raw[idx_ms_raw]),
-            ts_data->compress_heatmap_wlen,
-            ts_data->heatmap_buff,
-            mutual_data_size / sizeof(u16));
+        if (ts_data->compress_heatmap_wlen > 0) {
+            /* decode the compressed data from heatmap_raw to heatmap_buff. */
+            fts_ptflib_decoder(ts_data,
+                (u16*)(&ts_data->heatmap_raw[idx_ms_raw]),
+                ts_data->compress_heatmap_wlen,
+                ts_data->heatmap_buff,
+                mutual_data_size / sizeof(u16));
 
-        /* MS: Transform the order from RX->TX. */
-        /* After decoding, the data become to little-endian, but the output of
-         * transpose_raw is big-endian.
-         */
-        transpose_raw(&((u8*)ts_data->heatmap_buff)[0], ts_data->trans_raw,
-            tx, rx, false);
+            /* MS: Transform the order from RX->TX. */
+            /* After decoding, the data become to little-endian, but the output of
+             * transpose_raw is big-endian.
+             */
+            transpose_raw(&((u8*)ts_data->heatmap_buff)[0], ts_data->trans_raw,
+                tx, rx, false);
+        }
     }
 #if IS_ENABLED(GOOGLE_HEATMAP_DEBUG)
     FTS_DEBUG("Copy matual data,idx_buff=%d,idx_ms_raw=%d.",
@@ -2801,6 +2821,8 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     spin_lock_init(&ts_data->irq_lock);
     mutex_init(&ts_data->report_mutex);
     mutex_init(&ts_data->bus_lock);
+    mutex_init(&ts_data->reg_lock);
+    ts_data->is_deepsleep = false;
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
     ts_data->power_status = FTS_TS_STATE_POWER_ON;
@@ -3430,14 +3452,18 @@ int fts_set_continuous_mode(struct fts_ts_data *ts_data, bool en)
     u8 value = en ? ENABLE : DISABLE;
     u8 reg = FTS_REG_CONTINUOUS_EN;
 
-    ret = fts_write_reg_safe(reg, value);
-    if (ret == 0) {
-        ts_data->set_continuously_report = value;
-        fts_update_host_feature_setting(ts_data, en, FW_CONTINUOUS);
-    }
+    mutex_lock(&ts_data->reg_lock);
+    if (!ts_data->is_deepsleep) {
+        ret = fts_write_reg_safe(reg, value);
+        if (ret == 0) {
+            ts_data->set_continuously_report = value;
+            fts_update_host_feature_setting(ts_data, en, FW_CONTINUOUS);
+        }
 
-    PR_LOGD("%s fw_continuous %s.\n", en ? "Enable" : "Disable",
-        (ret == 0) ? "successfully" : "unsuccessfully");
+        PR_LOGD("%s fw_continuous %s.\n", en ? "Enable" : "Disable",
+            (ret == 0) ? "successfully" : "unsuccessfully");
+    }
+    mutex_unlock(&ts_data->reg_lock);
     return ret;
 }
 
@@ -3526,7 +3552,10 @@ static int fts_ts_suspend(struct device *dev)
     fts_set_heatmap_mode(ts_data, FW_HEATMAP_MODE_DISABLE);
 #endif
         FTS_DEBUG("make TP enter into sleep mode");
+        mutex_lock(&ts_data->reg_lock);
         ret = fts_write_reg(FTS_REG_POWER_MODE, FTS_REG_POWER_MODE_SLEEP);
+        ts_data->is_deepsleep = true;
+        mutex_unlock(&ts_data->reg_lock);
         if (ret < 0)
             FTS_ERROR("set TP to sleep mode fail, ret=%d", ret);
 
@@ -3575,6 +3604,7 @@ static int fts_ts_resume(struct device *dev)
         return ret;
     }
 
+    ts_data->is_deepsleep = false;
     fts_ex_mode_recovery(ts_data);
 
 #if FTS_ESDCHECK_EN
