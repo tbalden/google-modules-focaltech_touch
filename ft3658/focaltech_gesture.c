@@ -73,29 +73,10 @@
 /*****************************************************************************
 * Private enumerations, structures and unions using typedef
 *****************************************************************************/
-/*
-* gesture_id    - mean which gesture is recognised
-* point_num     - points number of this gesture
-* coordinate_x  - All gesture point x coordinate
-* coordinate_y  - All gesture point y coordinate
-* mode          - gesture enable/disable, need enable by host
-*               - 1:enable gesture function(default)  0:disable
-* active        - gesture work flag,
-*                 always set 1 when suspend, set 0 when resume
-*/
-struct fts_gesture_st {
-    u8 gesture_id;
-    u8 point_num;
-    u16 coordinate_x[FTS_GESTURE_POINTS_MAX];
-    u16 coordinate_y[FTS_GESTURE_POINTS_MAX];
-    u8 Gesture_major[FTS_GESTURE_POINTS_MAX];
-    u8 Gesture_minor[FTS_GESTURE_POINTS_MAX];
-};
 
 /*****************************************************************************
 * Static variables
 *****************************************************************************/
-static struct fts_gesture_st fts_gesture_data;
 
 /*****************************************************************************
 * Global variable or extern global variabls/functions
@@ -146,7 +127,7 @@ static ssize_t fts_gesture_buf_show(
     int count = 0;
     int i = 0;
     struct input_dev *input_dev = fts_data->input_dev;
-    struct fts_gesture_st *gesture = &fts_gesture_data;
+    struct fts_gesture_st *gesture = &fts_data->fts_gesture_data;
 
     mutex_lock(&input_dev->mutex);
     count = snprintf(buf, PAGE_SIZE, "Gesture ID:%d\n", gesture->gesture_id);
@@ -290,76 +271,71 @@ static void fts_gesture_report(struct input_dev *input_dev, int gesture_id)
 *        It will be called this function every intrrupt when FTS_GESTURE_EN = 1
 *
 *        gesture data length: 1(enable) + 1(reserve) + 2(header) + 6 * 4
-* Input: ts_data - global struct data
-*        data    - gesture data buffer if non-flash, else NULL
+* Input: ts_data   - global struct data
+*        is_report - whether report gesture event or not.
 * Output:
 * Return: 0 - read gesture data successfully, the report data is gesture data
 *         1 - tp not in suspend/gesture not enable in TP FW
 *         -Exx - error
 *****************************************************************************/
-int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data)
+int fts_gesture_readdata(struct fts_ts_data *ts_data, bool is_report)
 {
-    int ret = 0;
     int i = 0;
     int index = 0;
-    u8 buf[FTS_GESTURE_DATA_LEN] = { 0 };
     struct input_dev *input_dev = ts_data->input_dev;
-    struct fts_gesture_st *gesture = &fts_gesture_data;
-    u8 majorminor_buf[8 * FTS_GESTURE_POINTS_MAX] = { 0 };
+    struct fts_gesture_st *gesture = &fts_data->fts_gesture_data;
+    u8 gesture_buf[FTS_GESTURE_TOTAL_DATA_SIZE] = { 0 };
     u8 cmd[2] = { 0 };
 
     cmd[0] = FTS_GESTURE_MAJOR_MINOR;
 
-    if (!ts_data->suspended || !ts_data->gesture_mode) {
-        return 1;
+    if (!ts_data->suspended) {
+        return -EINVAL;
     }
 
-    if (!data) {
-        FTS_ERROR("gesture data buffer is null");
-        ret = -EINVAL;
-        return ret;
-    }
+    fts_read(cmd, 1, gesture_buf, FTS_GESTURE_TOTAL_DATA_SIZE);
 
-    memcpy(buf, data, FTS_GESTURE_DATA_LEN);
-    if (buf[0] != ENABLE) {
+    if (gesture_buf[0] != ENABLE) {
         FTS_DEBUG("gesture not enable in fw, don't process gesture");
-        return 1;
+        return -EINVAL;
     }
 
     /* init variable before read gesture point */
     memset(gesture->coordinate_x, 0, FTS_GESTURE_POINTS_MAX * sizeof(u16));
     memset(gesture->coordinate_y, 0, FTS_GESTURE_POINTS_MAX * sizeof(u16));
-    gesture->gesture_id = buf[2];
-    gesture->point_num = buf[3];
-    FTS_DEBUG("gesture_id=0x%x, point_num=%d",
-        gesture->gesture_id, gesture->point_num);
-    fts_read(cmd, 1, majorminor_buf, 8 * FTS_GESTURE_POINTS_MAX);
-
+    gesture->point_num = gesture_buf[2];
+    gesture->gesture_id = gesture_buf[3];
+    if (ts_data->log_level >= 1) {
+        FTS_DEBUG("gesture_id=0x%x, point_num=%d",
+            gesture->gesture_id, gesture->point_num);
+    }
     /* save point data,max:6 */
     for (i = 0; i < FTS_GESTURE_POINTS_MAX; i++) {
-        index = 4 * i + 4;
-        gesture->coordinate_x[i] = (u16)(((buf[0 + index] & 0x0F) << 8)
-                                         + buf[1 + index]);
-        gesture->coordinate_y[i] = (u16)(((buf[2 + index] & 0x0F) << 8)
-                                         + buf[3 + index]);
+        index = FTS_GESTURE_DATA_LEN * i;
+        gesture->major[i] =
+            (u16)(gesture_buf[6 + index] * ts_data->pdata->mm2px);
+        gesture->minor[i] =
+            (u16)(gesture_buf[7 + index] * ts_data->pdata->mm2px);
+        gesture->coordinate_x[i] = (u16)(((gesture_buf[8 + index] & 0x0F) << 8)
+                                         + gesture_buf[9 + index]);
+        gesture->coordinate_y[i] = (u16)(((gesture_buf[10 + index] & 0x0F) << 8)
+                                         + (gesture_buf[11 + index]& 0xFF));
+        gesture->orientation[i] =
+            (s16)(gesture_buf[13 + index] * FTS_ORIENTATION_SCALE);
 
-        gesture->Gesture_major[i] = majorminor_buf[8 * i + 4];
-        gesture->Gesture_minor[i] = majorminor_buf[8 * i + 5];
-
-        FTS_DEBUG("x=%d, y=%d, major=%d, minor=%d\n",
-            gesture->coordinate_x[i], gesture->coordinate_y[i],
-            gesture->Gesture_major[i], gesture->Gesture_minor[i]);
+        if (ts_data->log_level >= 1) {
+            FTS_DEBUG("x=%d, y=%d, major=%d, minor=%d, orientation=%d\n",
+                gesture->coordinate_x[i], gesture->coordinate_y[i],
+                gesture->major[i], gesture->minor[i],
+                gesture->orientation[i]);
+        }
     }
 
-    /* report gesture to OS */
-    fts_gesture_report(input_dev, gesture->gesture_id);
-
-    for(i = 0; i < gesture->point_num; i++) {
-        input_report_abs(input_dev, ABS_MT_POSITION_X, gesture->coordinate_x[i]);
-        input_report_abs(input_dev, ABS_MT_POSITION_Y, gesture->coordinate_y[i]);
-        input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, gesture->Gesture_major[i]);
-        input_report_abs(input_dev, ABS_MT_TOUCH_MINOR, gesture->Gesture_minor[i]);
-        input_sync(input_dev);
+    if (is_report) {
+        mutex_lock(&ts_data->report_mutex);
+        /* report gesture to OS. */
+        fts_gesture_report(input_dev, gesture->gesture_id);
+        mutex_unlock(&ts_data->report_mutex);
     }
 
     return 0;
@@ -477,7 +453,7 @@ int fts_gesture_init(struct fts_ts_data *ts_data)
 
     fts_create_gesture_sysfs(ts_data->dev);
 
-    memset(&fts_gesture_data, 0, sizeof(struct fts_gesture_st));
+    memset(&ts_data->fts_gesture_data, 0, sizeof(struct fts_gesture_st));
     ts_data->gesture_mode = FTS_GESTURE_EN;
 
     FTS_FUNC_EXIT();

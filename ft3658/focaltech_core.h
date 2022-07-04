@@ -80,7 +80,8 @@
 #define FTS_TOUCH_DATA_LEN  (FTS_MAX_POINTS_SUPPORT * FTS_ONE_TCH_LEN + 3)
 
 #define FTS_GESTURE_POINTS_MAX              1
-#define FTS_GESTURE_DATA_LEN               (FTS_GESTURE_POINTS_MAX * 4 + 4)
+#define FTS_GESTURE_DATA_LEN                14
+#define FTS_GESTURE_TOTAL_DATA_SIZE         (FTS_GESTURE_POINTS_MAX * FTS_GESTURE_DATA_LEN)
 
 #define FTS_MAX_ID                          0x0A
 #define FTS_TOUCH_X_H_POS                   3
@@ -204,6 +205,25 @@ enum MF_MODE {
     MF_ON,
 };
 
+/*
+* gesture_id    - mean which gesture is recognised
+* point_num     - points number of this gesture
+* coordinate_x  - All gesture point x coordinate
+* coordinate_y  - All gesture point y coordinate
+* major         - All gesture major value
+* minor         - All gesture minor value
+* orientation   - All gesture orientation value
+*/
+struct fts_gesture_st {
+    u8 gesture_id;
+    u8 point_num;
+    int coordinate_x[FTS_GESTURE_POINTS_MAX];
+    int coordinate_y[FTS_GESTURE_POINTS_MAX];
+    int major[FTS_GESTURE_POINTS_MAX];
+    int minor[FTS_GESTURE_POINTS_MAX];
+    int orientation[FTS_GESTURE_POINTS_MAX];
+};
+
 struct fts_ts_data {
     struct i2c_client *client;
     struct spi_device *spi;
@@ -226,6 +246,7 @@ struct fts_ts_data {
     struct mutex reg_lock;
     struct mutex device_mutex;
     struct completion bus_resumed;
+    struct fts_gesture_st fts_gesture_data;
     unsigned long intr_jiffies;
     int irq;
     int log_level;
@@ -393,7 +414,7 @@ int fts_spi_transfer_direct(u8 *writebuf, u32 writelen, u8 *readbuf, u32 readlen
 int fts_gesture_init(struct fts_ts_data *ts_data);
 int fts_gesture_exit(struct fts_ts_data *ts_data);
 void fts_gesture_recovery(struct fts_ts_data *ts_data);
-int fts_gesture_readdata(struct fts_ts_data *ts_data, u8 *data);
+int fts_gesture_readdata(struct fts_ts_data *ts_data, bool is_report);
 int fts_gesture_suspend(struct fts_ts_data *ts_data);
 int fts_gesture_resume(struct fts_ts_data *ts_data);
 
