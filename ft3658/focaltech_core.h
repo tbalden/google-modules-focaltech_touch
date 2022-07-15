@@ -224,6 +224,11 @@ struct fts_gesture_st {
     int orientation[FTS_GESTURE_POINTS_MAX];
 };
 
+enum SS_TYPE {
+    SS_NORMAL,
+    SS_WATER,
+};
+
 struct fts_ts_data {
     struct i2c_client *client;
     struct spi_device *spi;
