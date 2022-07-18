@@ -2004,6 +2004,7 @@ static int fts_input_init(struct fts_ts_data *ts_data)
      * 90 degrees to left and 90 degrees to the right.
      */
     input_set_abs_params(input_dev, ABS_MT_ORIENTATION, -4096, 4096, 0, 0);
+    input_set_abs_params(input_dev, ABS_MT_TOOL_TYPE, MT_TOOL_FINGER, MT_TOOL_PALM, 0, 0);
     ret = input_register_device(input_dev);
     if (ret) {
         FTS_ERROR("Input device registration failed");
