@@ -2855,9 +2855,10 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     u8 *trans_raw = NULL;
     int base_raw_size = 0;
     int base = 0;
-    int fast_events_x = 0;
-    int fast_events_y = 0;
-    u8 fast_events_id = 0;
+    u8 tp_finger_cnt = 0;
+    int tp_events_x = 0;
+    int tp_events_y = 0;
+    u8 tp_events_id = 0;
 
     fts_ts_set_bus_ref(ts_data, FTS_TS_BUS_REF_SYSFS, true);
     ret = enter_work_mode();
@@ -2868,8 +2869,8 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
     node_num = tx * rx;
     self_node = tx + rx;
 
-    base_raw_size = FTS_FULL_HEATMAP_RAW_SIZE(tx, rx);
-    FTS_DEBUG("heapmap base_raw size = %d", base_raw_size);
+    base_raw_size = FTS_FULL_TOUCH_RAW_SIZE(tx, rx);
+    FTS_DEBUG("base_raw size = %d", base_raw_size);
     base_raw = fts_malloc(base_raw_size);
     if (!base_raw) {
         FTS_ERROR("malloc memory for raw fails");
@@ -2891,17 +2892,23 @@ static int proc_test_strength_show(struct seq_file *s, void *v)
         goto exit;
     }
 
-    /*---------Output touch point-----------*/
-    for (i = 0; i < base_raw[1]; i++) {
-         base = FTS_ONE_TCH_LEN * i;
+    tp_finger_cnt = base_raw[1];
+    if (tp_finger_cnt > FTS_MAX_POINTS_SUPPORT) {
+        FTS_ERROR("The finger count(%d) is over than max fingers(%d)",
+            tp_finger_cnt, FTS_MAX_POINTS_SUPPORT);
+        tp_finger_cnt = FTS_MAX_POINTS_SUPPORT;
+    }
 
-         fast_events_x = ((base_raw[2 + base] & 0x0F) << 8) +
-                          (base_raw[3 + base] & 0xFF);
-         fast_events_y = ((base_raw[4 + base] & 0x0F) << 8) +
-                          (base_raw[5 + base] & 0xFF);
-         fast_events_id = (base_raw[4 + base] & 0xF0) >> 4;
-         seq_printf(s, "Finger ID = %d , x = %d, y = %d\n", fast_events_id,
-                    fast_events_x, fast_events_y);
+    /*---------Output touch point-----------*/
+    for (i = 0; i < tp_finger_cnt; i++) {
+         base = FTS_ONE_TCH_LEN * i;
+         tp_events_x = ((base_raw[2 + base] & 0x0F) << 8) +
+                       (base_raw[3 + base] & 0xFF);
+         tp_events_y = ((base_raw[4 + base] & 0x0F) << 8) +
+                       (base_raw[5 + base] & 0xFF);
+         tp_events_id = (base_raw[4 + base] & 0xF0) >> 4;
+         seq_printf(s, "Finger ID = %d, x = %d, y = %d\n", tp_events_id,
+                    tp_events_x, tp_events_y);
     }
 
     seq_printf(s, "     ");
