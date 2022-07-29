@@ -1780,8 +1780,12 @@ static void fts_populate_mutual_channel(struct fts_ts_data *ts_data,
 static void fts_populate_self_channel(struct fts_ts_data *ts_data,
     struct touch_offload_frame *frame, int channel)
 {
-    int i;
-    int idx = 0;
+    u8 ss_type = 0;
+    int idx_ss_normal = ts_data->pdata->tx_ch_num * ts_data->pdata->rx_ch_num;
+    int idx_ss_water = ts_data->pdata->tx_ch_num * ts_data->pdata->rx_ch_num +
+        ts_data->pdata->tx_ch_num + ts_data->pdata->rx_ch_num;
+    int ss_size =
+        (ts_data->pdata->tx_ch_num + ts_data->pdata->rx_ch_num) * sizeof(u16);
     struct TouchOffloadData1d *self_strength =
         (struct TouchOffloadData1d *)frame->channel_data[channel];
 
@@ -1791,10 +1795,25 @@ static void fts_populate_self_channel(struct fts_ts_data *ts_data,
     self_strength->header.channel_size =
         TOUCH_OFFLOAD_FRAME_SIZE_1D(self_strength->rx_size,
             self_strength->tx_size);
-    idx = ts_data->pdata->tx_ch_num * ts_data->pdata->rx_ch_num;
-    for (i = 0; i < ts_data->pdata->tx_ch_num + ts_data->pdata->rx_ch_num; i++) {
-        ((u16 *) self_strength->data)[i] =
-            ((u16 *) ts_data->heatmap_buff)[idx + i];
+
+    switch (frame->channel_type[channel] & ~TOUCH_SCAN_TYPE_SELF) {
+    case TOUCH_DATA_TYPE_FILTERED:
+        ss_type = SS_WATER;
+        break;
+    case TOUCH_DATA_TYPE_STRENGTH:
+    default:
+        ss_type = SS_NORMAL;
+        break;
+    }
+
+    if (ss_type == SS_WATER) {
+        /* Copy Water-SS. */
+        memcpy(self_strength->data, ts_data->heatmap_buff + idx_ss_water,
+            ss_size);
+    } else {
+        /* Copy Normal-SS. */
+        memcpy(self_strength->data, ts_data->heatmap_buff + idx_ss_normal,
+            ss_size);
     }
 }
 
@@ -2923,6 +2942,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     ts_data->offload.caps.heatmap_size = HEATMAP_SIZE_FULL;
     ts_data->offload.caps.touch_data_types = TOUCH_DATA_TYPE_COORD |
                                              TOUCH_DATA_TYPE_STRENGTH |
+                                             TOUCH_DATA_TYPE_FILTERED |
                                              TOUCH_DATA_TYPE_RAW;
     ts_data->offload.caps.touch_scan_types = TOUCH_SCAN_TYPE_MUTUAL |
                                              TOUCH_SCAN_TYPE_SELF;
