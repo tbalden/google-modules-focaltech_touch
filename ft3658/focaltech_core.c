@@ -2948,7 +2948,7 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
                                              TOUCH_SCAN_TYPE_SELF;
     ts_data->offload.caps.continuous_reporting = true;
     ts_data->offload.caps.noise_reporting = false;
-    ts_data->offload.caps.cancel_reporting = false;
+    ts_data->offload.caps.cancel_reporting = true;
     ts_data->offload.caps.rotation_reporting = true;
     ts_data->offload.caps.size_reporting = true;
     ts_data->offload.caps.filter_grip = true;
