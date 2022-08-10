@@ -79,7 +79,8 @@ static void unregister_panel_bridge(struct drm_bridge *bridge);
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
 static void fts_offload_set_running(struct fts_ts_data *ts_data, bool running);
-static void fts_populate_frame(struct fts_ts_data *ts_data);
+static void fts_populate_frame(struct fts_ts_data *ts_data, int populate_channel_types);
+static void fts_offload_push_coord_frame(struct fts_ts_data *ts);
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
@@ -468,17 +469,24 @@ void fts_release_all_finger(void)
 #endif
 
     mutex_lock(&ts_data->report_mutex);
-#if FTS_MT_PROTOCOL_B_EN
-    for (finger_count = 0; finger_count < max_touches; finger_count++) {
-        input_mt_slot(input_dev, finger_count);
-        input_mt_report_slot_state(input_dev, MT_TOOL_FINGER, false);
+
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+    for (finger_count = 0; finger_count < max_touches; finger_count++) {
         ts_data->offload.coords[finger_count].status = COORD_STATUS_INACTIVE;
         ts_data->offload.coords[finger_count].major = 0;
         ts_data->offload.coords[finger_count].minor = 0;
         ts_data->offload.coords[finger_count].pressure = 0;
         ts_data->offload.coords[finger_count].rotation = 0;
+    }
+
+    if (ts_data->touch_offload_active_coords && ts_data->offload.offload_running) {
+        fts_offload_push_coord_frame(ts_data);
+    } else {
 #endif
+#if FTS_MT_PROTOCOL_B_EN
+    for (finger_count = 0; finger_count < max_touches; finger_count++) {
+        input_mt_slot(input_dev, finger_count);
+        input_mt_report_slot_state(input_dev, MT_TOOL_FINGER, false);
     }
 #else
     input_mt_sync(input_dev);
@@ -490,6 +498,9 @@ void fts_release_all_finger(void)
     input_report_key(ts_data->pen_dev, BTN_TOOL_PEN, 0);
     input_report_key(ts_data->pen_dev, BTN_TOUCH, 0);
     input_sync(ts_data->pen_dev);
+#endif
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
+    }
 #endif
 
     ts_data->touchs = 0;
@@ -1027,7 +1038,7 @@ static void fts_irq_read_report(void)
     } else {
         fts_offload_set_running(ts_data, true);
         PR_LOGD("reserve a frame ok");
-        fts_populate_frame(ts_data);
+        fts_populate_frame(ts_data, 0xFFFFFFFF);
 
         ret = touch_offload_queue_frame(&ts_data->offload,
                                         ts_data->reserved_frame);
@@ -1742,6 +1753,7 @@ static void fts_populate_coordinate_channel(struct fts_ts_data *ts_data,
     int channel)
 {
     int i;
+    u8 active_coords = 0;
 
     struct TouchOffloadDataCoord *dc =
         (struct TouchOffloadDataCoord *)frame->channel_data[channel];
@@ -1757,7 +1769,10 @@ static void fts_populate_coordinate_channel(struct fts_ts_data *ts_data,
         dc->coords[i].pressure = ts_data->offload.coords[i].pressure;
         dc->coords[i].rotation = ts_data->offload.coords[i].rotation;
         dc->coords[i].status = ts_data->offload.coords[i].status;
+        if (dc->coords[i].status != COORD_STATUS_INACTIVE)
+            active_coords += 1;
     }
+    ts_data->touch_offload_active_coords = active_coords;
 }
 
 static void fts_populate_mutual_channel(struct fts_ts_data *ts_data,
@@ -1817,7 +1832,7 @@ static void fts_populate_self_channel(struct fts_ts_data *ts_data,
     }
 }
 
-static void fts_populate_frame(struct fts_ts_data *ts_data)
+static void fts_populate_frame(struct fts_ts_data *ts_data, int populate_channel_types)
 {
     static u64 index;
     int i;
@@ -1828,12 +1843,33 @@ static void fts_populate_frame(struct fts_ts_data *ts_data)
 
     /* Populate all channels */
     for (i = 0; i < frame->num_channels; i++) {
-        if (frame->channel_type[i] == TOUCH_DATA_TYPE_COORD) {
+        if ((frame->channel_type[i] & populate_channel_types) == TOUCH_DATA_TYPE_COORD) {
             fts_populate_coordinate_channel(ts_data, frame, i);
-        } else if ((frame->channel_type[i] & TOUCH_SCAN_TYPE_MUTUAL) != 0) {
+        } else if ((frame->channel_type[i] & TOUCH_SCAN_TYPE_MUTUAL &
+                    populate_channel_types) != 0) {
             fts_populate_mutual_channel(ts_data, frame, i);
-        } else if ((frame->channel_type[i] & TOUCH_SCAN_TYPE_SELF) != 0) {
+        } else if ((frame->channel_type[i] & TOUCH_SCAN_TYPE_SELF &
+                    populate_channel_types) != 0) {
             fts_populate_self_channel(ts_data, frame, i);
+        }
+    }
+}
+
+static void fts_offload_push_coord_frame(struct fts_ts_data *ts)
+{
+    int error;
+
+    FTS_INFO("active coords %u.", ts->touch_offload_active_coords);
+
+    error = touch_offload_reserve_frame(&ts->offload, &ts->reserved_frame);
+    if (error != 0) {
+        FTS_DEBUG("Could not reserve a frame: error=%d.\n", error);
+    } else {
+        fts_populate_frame(ts, TOUCH_DATA_TYPE_COORD);
+
+        error = touch_offload_queue_frame(&ts->offload, ts->reserved_frame);
+        if (error != 0) {
+            FTS_ERROR("Failed to queue reserved frame: error=%d.\n", error);
         }
     }
 }
@@ -2958,6 +2994,8 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     ts_data->offload.hcallback = (void *)ts_data;
     ts_data->offload.report_cb = fts_offload_report;
     touch_offload_init(&ts_data->offload);
+
+    ts_data->touch_offload_active_coords = 0;
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD) || \
     IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
