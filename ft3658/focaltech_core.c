@@ -56,9 +56,6 @@
 /*****************************************************************************
 * Private constant and macro definitions using #define
 *****************************************************************************/
-#if GOOGLE_REPORT_MODE
-const short int hopping_freq[4] = {277, 237, 112, 0};
-#endif
 #define FTS_DRIVER_NAME                     "fts_ts"
 #define FTS_DRIVER_PEN_NAME                 "fts_ts,pen"
 #define INTERVAL_READ_REG                   200  /* unit:ms */
@@ -91,8 +88,8 @@ static int fts_ts_resume(struct device *dev);
 static void fts_update_motion_filter(struct fts_ts_data *ts, u8 touches);
 
 static char *status_list_str[STATUS_CNT_END] = {
-    "Hopping",
-    "reserved",
+    "Baseline refreshed",
+    "Baseline refreshed",
     "Palm",
     "Water",
     "Grip",
@@ -108,6 +105,14 @@ static char *feature_list_str[FW_CNT_END] = {
     "FW_HEATMAP",
     "FW_CONTINUOUS",
 };
+
+static char *status_baseline_refresh_str[4] = {
+    "Baseline refreshed: none",
+    "Baseline refreshed: removing touch",
+    "Baseline refreshed: removing water",
+    "Baseline refreshed: removing shell iron",
+};
+
 int fts_check_cid(struct fts_ts_data *ts_data, u8 id_h)
 {
     int i = 0;
@@ -807,8 +812,6 @@ static int fts_read_touchdata(struct fts_ts_data *data)
 #if IS_ENABLED(GOOGLE_REPORT_MODE)
     u8 regB2_data[FTS_CUSTOMER_STATUS_LEN] = { 0 };
     u8 check_regB2_status[2] = { 0 };
-    u8 current_hopping = 0;
-    u8 new_hopping = 0;
     int i;
 
     if (data->work_mode == FTS_REG_WORKMODE_WORK_VALUE) {
@@ -862,19 +865,10 @@ static int fts_read_touchdata(struct fts_ts_data *data)
 
         check_regB2_status[0] = regB2_data[0] ^ data->current_host_status[0] ;
         if (check_regB2_status[0]) { // current_status is different with previous_status
-            for(i = STATUS_HOPPING; i < STATUS_CNT_END; i++) {
-                if (i == STATUS_HOPPING) {
-                    current_hopping = data->current_host_status[0] & 0x03;
-                    new_hopping = regB2_data[0] & 0x03;
-                    if (current_hopping != new_hopping &&
-                        current_hopping < 3 &&
-                        new_hopping < 3) {
-                        FTS_INFO("-------%s (%dKhz => %dKhz)\n",
-                            status_list_str[i],
-                            hopping_freq[current_hopping],
-                            hopping_freq[new_hopping]);
-                        i++;
-                    }
+            for (i = STATUS_BASELINE_REFRESH_B1; i < STATUS_CNT_END; i++) {
+                if ((i == STATUS_BASELINE_REFRESH_B1) && (check_regB2_status[0] & 0x03)) {
+                    FTS_INFO("-------%s\n",
+                        status_baseline_refresh_str[regB2_data[0] & 0x03]);
                 } else {
                     bool status_changed = check_regB2_status[0] & (1 << i);
                     bool new_status = regB2_data[0] & (1 << i);
@@ -899,7 +893,7 @@ static int fts_read_touchdata(struct fts_ts_data *data)
             bool feature_enabled;
             FTS_ERROR("FW settings dose not match host side, host: 0x%x, B2[1]:0x%x\n",
                 data->current_host_status[1], regB2_data[1]);
-            for(i = FW_GLOVE; i < FW_CNT_END; i++) {
+            for (i = FW_GLOVE; i < FW_CNT_END; i++) {
                 feature_changed = check_regB2_status[1] & (1 << i);
                 feature_enabled = regB2_data[1] & (1 << i);
                 if (feature_changed) {
@@ -3167,10 +3161,6 @@ static int fts_ts_probe_entry(struct fts_ts_data *ts_data)
     ts_data->work_mode = FTS_REG_WORKMODE_WORK_VALUE;
 #if GOOGLE_REPORT_MODE
     fts_read_reg(FTS_REG_CUSTOMER_STATUS, &ts_data->current_host_status[0]);
-    if ((ts_data->current_host_status[0] & 0x03) < 3) {
-        FTS_DEBUG("-------Hopping %dKhz\n",
-            hopping_freq[(ts_data->current_host_status[0] & 0x03)]);
-    }
     FTS_INFO("-------Palm mode %s\n",
         (ts_data->current_host_status[0] & (1 << STATUS_PALM)) ? "enter" : "exit");
     FTS_INFO("-------Water mode %s\n",
