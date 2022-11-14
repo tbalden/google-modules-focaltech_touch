@@ -2610,9 +2610,8 @@ static void fts_suspend_work(struct work_struct *work)
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
     if (ts_data->tbn_register_mask) {
-        int ret = tbn_release_bus(ts_data->tbn_register_mask);
-        if (ret == 0)
-            ts_data->tbn_owner = TBN_AOC;
+        tbn_release_bus(ts_data->tbn_register_mask);
+        ts_data->tbn_owner = TBN_AOC;
     }
 #endif
     mutex_unlock(&ts_data->device_mutex);
@@ -2628,9 +2627,8 @@ static void fts_resume_work(struct work_struct *work)
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_TBN)
     if (ts_data->tbn_register_mask) {
-        int ret = tbn_request_bus(ts_data->tbn_register_mask);
-        if (ret == 0)
-            ts_data->tbn_owner = TBN_AP;
+        tbn_request_bus(ts_data->tbn_register_mask);
+        ts_data->tbn_owner = TBN_AP;
     }
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_PANEL_BRIDGE)
