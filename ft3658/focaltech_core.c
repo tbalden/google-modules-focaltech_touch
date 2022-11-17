@@ -53,6 +53,10 @@
 #include <linux/types.h>
 #include "focaltech_core.h"
 
+#ifdef CONFIG_UCI
+#include <linux/inputfilter/sweep2sleep.h>
+#endif
+
 /*****************************************************************************
 * Private constant and macro definitions using #define
 *****************************************************************************/
@@ -581,8 +585,22 @@ static int fts_input_report_b(struct fts_ts_data *data)
             }
             input_report_abs(data->input_dev, ABS_MT_TOUCH_MAJOR, events[i].major);
             input_report_abs(data->input_dev, ABS_MT_TOUCH_MINOR, events[i].minor);
+#ifdef CONFIG_UCI
+                                {
+                                        int x2, y2;
+                                        bool frozen_coords = s2s_freeze_coords(&x2,&y2,events[i].x,events[i].y);
+//                                	pr_info("%s uci UCI ...\n",__func__);
+                                        if (frozen_coords) {
+	                                            input_report_abs(data->input_dev, ABS_MT_POSITION_X, x2);
+	                                            input_report_abs(data->input_dev, ABS_MT_POSITION_Y, y2);
+                                        } else {
+#endif
             input_report_abs(data->input_dev, ABS_MT_POSITION_X, events[i].x);
             input_report_abs(data->input_dev, ABS_MT_POSITION_Y, events[i].y);
+#ifdef CONFIG_UCI
+                                        }
+                                }
+#endif
 
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
             }
@@ -687,8 +705,22 @@ static int fts_input_report_a(struct fts_ts_data *data)
             }
             input_report_abs(data->input_dev, ABS_MT_TOUCH_MAJOR, events[i].major);
             input_report_abs(data->input_dev, ABS_MT_TOUCH_MINOR, events[i].minor);
+#ifdef CONFIG_UCI
+                                {
+                                        int x2, y2;
+                                        bool frozen_coords = s2s_freeze_coords(&x2,&y2,events[i].x,events[i].y);
+//                                	pr_info("%s uci UCI ...\n",__func__);
+                                        if (frozen_coords) {
+	                                            input_report_abs(data->input_dev, ABS_MT_POSITION_X, x2);
+	                                            input_report_abs(data->input_dev, ABS_MT_POSITION_Y, y2);
+                                        } else {
+#endif
             input_report_abs(data->input_dev, ABS_MT_POSITION_X, events[i].x);
             input_report_abs(data->input_dev, ABS_MT_POSITION_Y, events[i].y);
+#ifdef CONFIG_UCI
+                                        }
+                                }
+#endif
 
             input_mt_sync(data->input_dev);
 
@@ -1708,10 +1740,24 @@ static void fts_offload_report(void *handle,
                 break;
             }
             input_mt_report_slot_state(ts_data->input_dev, tool_type, 1);
+#ifdef CONFIG_UCI
+                                {
+                                        int x2, y2;
+                                        bool frozen_coords = s2s_freeze_coords(&x2,&y2,report->coords[i].x,report->coords[i].y);
+//                                	pr_info("%s uci UCI ...\n",__func__);
+                                        if (frozen_coords) {
+	                                            input_report_abs(ts_data->input_dev, ABS_MT_POSITION_X, x2);
+	                                            input_report_abs(ts_data->input_dev, ABS_MT_POSITION_Y, y2);
+                                        } else {
+#endif
             input_report_abs(ts_data->input_dev, ABS_MT_POSITION_X,
                 report->coords[i].x);
             input_report_abs(ts_data->input_dev, ABS_MT_POSITION_Y,
                 report->coords[i].y);
+#ifdef CONFIG_UCI
+                                        }
+                                }
+#endif
             input_report_abs(ts_data->input_dev, ABS_MT_TOUCH_MAJOR,
                 report->coords[i].major);
             input_report_abs(ts_data->input_dev, ABS_MT_TOUCH_MINOR,
@@ -2531,6 +2577,10 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
     return 0;
 }
 
+#ifdef CONFIG_UCI
+extern void uci_screen_state(int state);
+#endif
+
 static void fts_suspend_work(struct work_struct *work)
 {
     struct fts_ts_data *ts_data = container_of(work, struct fts_ts_data,
@@ -2559,6 +2609,10 @@ static void fts_suspend_work(struct work_struct *work)
         if (ret == 0)
             ts_data->tbn_owner = TBN_AOC;
     }
+#endif
+#ifdef CONFIG_UCI
+	pr_info("%s uci screen state call %d... \n",__func__,0);
+	uci_screen_state(0);
 #endif
     mutex_unlock(&ts_data->device_mutex);
 }
@@ -2591,6 +2645,10 @@ static void fts_resume_work(struct work_struct *work)
 #endif
     complete_all(&ts_data->bus_resumed);
 
+#ifdef CONFIG_UCI
+	pr_info("%s uci screen state call %d... \n",__func__,0);
+	uci_screen_state(2);
+#endif
     mutex_unlock(&ts_data->device_mutex);
 }
 
