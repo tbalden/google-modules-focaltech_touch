@@ -2610,11 +2610,11 @@ static void fts_suspend_work(struct work_struct *work)
             ts_data->tbn_owner = TBN_AOC;
     }
 #endif
+    mutex_unlock(&ts_data->device_mutex);
 #ifdef CONFIG_UCI
 	pr_info("%s uci screen state call %d... \n",__func__,0);
 	uci_screen_state(0);
 #endif
-    mutex_unlock(&ts_data->device_mutex);
 }
 
 static void fts_resume_work(struct work_struct *work)
@@ -2645,11 +2645,11 @@ static void fts_resume_work(struct work_struct *work)
 #endif
     complete_all(&ts_data->bus_resumed);
 
+    mutex_unlock(&ts_data->device_mutex);
 #ifdef CONFIG_UCI
 	pr_info("%s uci screen state call %d... \n",__func__,0);
 	uci_screen_state(2);
 #endif
-    mutex_unlock(&ts_data->device_mutex);
 }
 
 #if defined(CONFIG_FB)
