@@ -224,6 +224,11 @@ struct fts_gesture_st {
     int orientation[FTS_GESTURE_POINTS_MAX];
 };
 
+enum SS_TYPE {
+    SS_NORMAL,
+    SS_WATER,
+};
+
 struct fts_ts_data {
     struct i2c_client *client;
     struct spi_device *spi;
@@ -325,6 +330,7 @@ struct fts_ts_data {
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_OFFLOAD)
     struct touch_offload_context offload;
     struct touch_offload_frame *reserved_frame;
+    u8 touch_offload_active_coords;
 #endif
 #if IS_ENABLED(CONFIG_TOUCHSCREEN_HEATMAP)
     struct v4l2_heatmap v4l2;
