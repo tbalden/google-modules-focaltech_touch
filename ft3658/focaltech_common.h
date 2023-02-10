@@ -146,11 +146,15 @@
                                                     // bit 7   : LPWG
 #define FTS_CAP_DATA_LEN                    91
 #define FTS_SELF_DATA_LEN                   68
-#define FTS_FULL_HEATMAP_RAW_SIZE(tx_num, rx_num) \
+#define FTS_FULL_TOUCH_RAW_SIZE(tx_num, rx_num) \
     (FTS_CAP_DATA_LEN + ((tx_num) * (rx_num) + FTS_SELF_DATA_LEN * 2) * sizeof(u16))
 #define FTS_PRESSURE_SCALE                  85      // 255 / 3
 #define FTS_CUSTOMER_STATUS_LEN             4
 #define FTS_CUSTOMER_STATUS1_MASK           0x0F
+#define FTS_ORIENTATION_SCALE               45
+#define FTS_GESTURE_ID_STTW                 0x25
+#define FTS_GESTURE_ID_LPTW_DOWN            0x26
+#define FTS_GESTURE_ID_LPTW_UP              0x27
 
 #define FTS_SYSFS_ECHO_ON(buf)      (buf[0] == '1')
 #define FTS_SYSFS_ECHO_OFF(buf)     (buf[0] == '0')
